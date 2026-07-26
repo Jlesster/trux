@@ -1,0 +1,4 @@
+builddir-linux/
+CMakeUserPresets.json
+dump.sh
+trux-dump.md
