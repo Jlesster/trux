@@ -1,8 +1,8 @@
 #pragma once
 
-namespace trux {
+namespace trux::layout {
 struct Size {
     int width{};
     int height{};
 };
-}  // namespace trux
+}  // namespace trux::layout

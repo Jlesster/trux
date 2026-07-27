@@ -1,8 +1,9 @@
 #pragma once
 
+#include "trux/layout/size.hpp"
+
 #include <expected>
 #include <memory>
-#include <trux/size.hpp>
 
 namespace trux {
 
@@ -19,14 +20,12 @@ public:
 
     [[nodiscard]]
     std::expected<void, std::string> init();
+    std::expected<void, std::string> enable_raw_mode();
 
     void shutdown();
 
     [[nodiscard]]
-    Size size() const;
-
-    void clear();
-    void present();
+    layout::Size size() const;
 
 private:
     struct Impl;

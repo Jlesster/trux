@@ -1,8 +1,8 @@
 #pragma once
 
-namespace trux {
+namespace trux::layout {
 struct Position {
     int x{};
     int y{};
 };
-}  // namespace trux
+}  // namespace trux::layout

@@ -1,4 +1,6 @@
-namespace ansi {
+#pragma once
+
+namespace trux::ansi {
 
 void hide_cursor();
 void show_cursor();
@@ -8,4 +10,4 @@ void leave_alt_screen();
 
 void clear();
 void flush();
-}  // namespace ansi
+}  // namespace trux::ansi

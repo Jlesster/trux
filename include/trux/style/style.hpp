@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-// [NOTE] Will be made a bitmask
+namespace trux::style {
 enum class Style : uint8_t {
     None      = 0,
     Bold      = 1 << 0,
@@ -13,3 +13,4 @@ enum class Style : uint8_t {
     Dim       = 1 << 5,
     Strike    = 1 << 6,
 };
+}

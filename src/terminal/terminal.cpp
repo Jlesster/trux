@@ -6,8 +6,8 @@
 #include <expected>
 #include <iostream>
 #include <memory>
-#include <terminal/ansi.hpp>
-#include <terminal/terminal.hpp>
+#include <trux/ansi.hpp>
+#include <trux/terminal.hpp>
 
 namespace trux {
 struct Terminal::Impl {
@@ -33,6 +33,22 @@ Terminal& Terminal::operator=(Terminal&& other) noexcept {
     return *this;
 }
 
+std::expected<void, std::string> Terminal::enable_raw_mode() {
+    // Terminal options struct
+    termios raw = m_impl->original_termios;
+
+    // setting terminal options using bitmask
+    raw.c_lflag &= ~(ECHO | ICANON | ISIG);
+    raw.c_iflag &= ~(IXON | ICRNL);
+    raw.c_oflag &= ~(OPOST);
+
+    if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
+        return std::unexpected("[ERROR] Failed to enable raw mode");
+
+    m_impl->raw_enabled = true;
+    return {};
+}
+
 std::expected<void, std::string> Terminal::init() {
     if(m_impl == nullptr)
         return std::unexpected("[ERROR] Invalid terminal state");
@@ -42,16 +58,9 @@ std::expected<void, std::string> Terminal::init() {
     if(tcgetattr(STDIN_FILENO, &m_impl->original_termios) == -1)
         return std::unexpected("[ERROR] Failed to read terminal settings");
 
-    termios raw = m_impl->original_termios;
+    auto result = enable_raw_mode();
 
-    raw.c_lflag &= ~(ECHO | ICANON | ISIG);
-    raw.c_iflag &= ~(IXON | ICRNL);
-    raw.c_oflag &= ~(OPOST);
-
-    if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
-        return std::unexpected("[ERROR] Failed to enable raw mode");
-
-    m_impl->raw_enabled = true;
+    if(!result) return result;
 
     // alternate screen
     ansi::enter_alt_screen();

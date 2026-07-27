@@ -1,29 +1,29 @@
 #include <print>
-#include <terminal/ansi.hpp>
+#include <trux/ansi.hpp>
 
-void ansi::hide_cursor() {
+void trux::ansi::hide_cursor() {
     std::print("\x1b[?25l");
     std::fflush(stdout);
 }
 
-void ansi::show_cursor() {
+void trux::ansi::show_cursor() {
     std::print("\x1b[?25h");
     std::fflush(stdout);
 }
 
-void ansi::enter_alt_screen() {
+void trux::ansi::enter_alt_screen() {
     std::print("\x1b[?1049h");
     std::fflush(stdout);
 }
 
-void ansi::leave_alt_screen() {
+void trux::ansi::leave_alt_screen() {
     std::print("\x1b[?1049l");
     std::fflush(stdout);
 }
 
-void ansi::clear() {
+void trux::ansi::clear() {
     std::print("\x1b[2J");
     std::fflush(stdout);
 }
 
-void ansi::flush() { std::fflush(stdout); }
+void trux::ansi::flush() { std::fflush(stdout); }
