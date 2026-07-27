@@ -23,3 +23,7 @@ target_include_directories(${PROJECT_NAME}_lib PUBLIC include)
 # --- Executables ---
 add_executable(hello examples/hello.cpp)
 target_link_libraries(hello PRIVATE ${PROJECT_NAME}_lib)
+
+# --- Testing ---
+enable_testing()
+add_subdirectory(tests)

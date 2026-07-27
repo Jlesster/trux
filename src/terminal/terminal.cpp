@@ -6,8 +6,8 @@
 #include <expected>
 #include <iostream>
 #include <memory>
-#include <trux/ansi.hpp>
-#include <trux/terminal.hpp>
+#include <trux/terminal/ansi.hpp>
+#include <trux/terminal/terminal.hpp>
 
 namespace trux {
 struct Terminal::Impl {
@@ -89,7 +89,7 @@ void Terminal::shutdown() {
     m_impl->initialized = false;
 }
 
-Size Terminal::size() const {
+layout::Size Terminal::size() const {
     winsize ws{};
 
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);

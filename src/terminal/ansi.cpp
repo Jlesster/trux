@@ -1,5 +1,5 @@
 #include <print>
-#include <trux/ansi.hpp>
+#include <trux/terminal/ansi.hpp>
 
 void trux::ansi::hide_cursor() {
     std::print("\x1b[?25l");

@@ -1,6 +1,6 @@
 #include <chrono>
-#include <terminal/terminal.hpp>
 #include <thread>
+#include <trux/terminal/terminal.hpp>
 
 int main() {
     trux::Terminal terminal;
