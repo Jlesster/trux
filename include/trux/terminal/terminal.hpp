@@ -27,7 +27,6 @@ public:
     [[nodiscard]]
     layout::Size size() const;
 
-    void clear();
     void present();
 
 private:

@@ -20,6 +20,8 @@ public:
     void resize(layout::Size);
     void clear();
 
+    constexpr auto operator<=>(const CellBuffer&) const = default;
+
 private:
     [[nodiscard]]
     std::size_t index(layout::Position pos) const noexcept;

@@ -4,7 +4,7 @@
 
 namespace trux::layout {
 [[nodiscard]]
-constexpr Region root(Size size) noexcept {
+constexpr Region init(Size size) noexcept {
     return Region{
         {0, 0},
         size,

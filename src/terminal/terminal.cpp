@@ -98,8 +98,4 @@ layout::Size Terminal::size() const {
             .height = static_cast<int>(ws.ws_row)};
 }
 
-void Terminal::clear() { ansi::clear(); }
-
-void Terminal::present() { ansi::flush(); }
-
 }  // namespace trux

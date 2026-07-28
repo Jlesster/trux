@@ -5,7 +5,7 @@
 #include <trux/layout/position.hpp>
 
 void test_vertical_split() {
-    auto root          = trux::layout::root({80, 24});
+    auto root          = trux::layout::init({80, 24});
     auto [left, right] = root.v_split(25);
 
     assert(left.size().width == 20);

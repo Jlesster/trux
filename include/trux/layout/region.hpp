@@ -26,6 +26,18 @@ public:
         return m_rect;
     }
 
+    [[nodiscard]]
+    constexpr bool contains(Position pos) const noexcept {
+        return pos.x >= m_rect.position.x && pos.y >= m_rect.position.y &&
+               pos.x < m_rect.position.x + m_rect.size.width &&
+               pos.y < m_rect.position.y + m_rect.size.height;
+    }
+
+    [[nodiscard]]
+    constexpr Position absolute(Position local) const noexcept {
+        return {m_rect.position.x + local.x, m_rect.position.y + local.y};
+    }
+
 private:
     Rect m_rect;
 };
