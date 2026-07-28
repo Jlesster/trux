@@ -1,7 +1,6 @@
 #include "trux/input/event.hpp"
 #include "trux/input/key.hpp"
 
-#include <cctype>
 #include <optional>
 #include <trux/input/event_parser.hpp>
 
