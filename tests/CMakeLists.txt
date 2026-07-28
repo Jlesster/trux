@@ -67,3 +67,17 @@ add_test(
     NAME Input
     COMMAND input_test
 )
+
+add_executable(widget_test
+    widget_test.cpp
+)
+
+target_link_libraries(widget_test
+    PRIVATE
+    ${PROJECT_NAME}_lib
+)
+
+add_test(
+    NAME Widget
+    COMMAND widget_test
+)

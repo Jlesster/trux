@@ -4,6 +4,7 @@
 
 #include <expected>
 #include <memory>
+#include <optional>
 
 namespace trux {
 
@@ -28,6 +29,8 @@ public:
     layout::Size size() const;
 
     void present();
+
+    std::optional<char> read();
 
 private:
     struct Impl;
