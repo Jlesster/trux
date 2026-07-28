@@ -1,4 +1,4 @@
-#include <trux/widget/label.hpp>
+#include <trux/component/label.hpp>
 
 using namespace trux;
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "trux/layout/size.hpp"
+#include "trux/renderer/renderer.hpp"
 
 #include <expected>
 #include <memory>
@@ -28,7 +29,7 @@ public:
     [[nodiscard]]
     layout::Size size() const;
 
-    void present();
+    void present(renderer::Renderer&);
 
     std::optional<char> read();
 

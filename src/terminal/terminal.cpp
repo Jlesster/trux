@@ -1,3 +1,5 @@
+#include "trux/renderer/renderer.hpp"
+
 #include <asm-generic/ioctls.h>
 #include <sys/ioctl.h>
 #include <termios.h>
@@ -96,6 +98,10 @@ layout::Size Terminal::size() const {
 
     return {.width  = static_cast<int>(ws.ws_col),
             .height = static_cast<int>(ws.ws_row)};
+}
+
+void Terminal::present(renderer::Renderer& renderer) {
+    // [TODO]
 }
 
 }  // namespace trux

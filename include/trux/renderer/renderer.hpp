@@ -29,6 +29,9 @@ public:
     void put(layout::Position, Cell);
     void put(layout::Position, char32_t);
 
+    template <component::ComponentType T>
+    void push(const T& component, layout::Region);
+
     void text(layout::Region, layout::Position, std::string_view);
 
     void set_clip(layout::Region);
