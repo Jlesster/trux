@@ -14,33 +14,25 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
                 return std::nullopt;
             }
 
-            if(byte == '\n') { return Event{KeyEvent{.key = Key::Enter}}; }
-
-            if(byte == '\t') { return Event{KeyEvent{.key = Key::Tab}}; }
-
-            if(byte == '\x7f') {
-                return Event{KeyEvent{.key = Key::Backspace}};
-            }
-
+            if(byte == '\n') { return Event{Key::Enter, true}; }
+            if(byte == '\t') { return Event{Key::Tab, true}; }
+            if(byte == '\x7f') { return Event{Key::Backspace, true}; }
             if(byte >= 32 && byte <= 126) {
-                return Event{
-                    KeyEvent{.key       = Key::Char,
-                             .character = static_cast<char32_t>(byte)}
-                };
+                return Event{static_cast<char32_t>(byte), true};
             }
 
             return std::nullopt;
         }
 
         case State::Escape: {
+            m_state = State::Normal;
             if(byte == '[') {
                 m_state = State::CSI;
                 return std::nullopt;
             }
 
-            m_state = State::Normal;
-
-            return Event{KeyEvent{.key = Key::Escape}};
+            m_reprocess = byte;
+            return Event{Key::Escape, true};
         }
 
         case State::CSI: {
@@ -48,17 +40,30 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
 
             switch(byte) {
                 case 'A':
-                    return Event{{KeyEvent{Key::Up}}};
+                    return Event{Key::Up, true};
                 case 'B':
-                    return Event{{KeyEvent{Key::Down}}};
+                    return Event{Key::Down, true};
                 case 'C':
-                    return Event{{KeyEvent{Key::Right}}};
+                    return Event{Key::Right, true};
                 case 'D':
-                    return Event{{KeyEvent{Key::Left}}};
+                    return Event{Key::Left, true};
             }
             return std::nullopt;
         }
     }
 
     return std::nullopt;
+}
+
+std::optional<input::Event> input::EventParser::resolve_pending() {
+    bool was_escape = (m_state == State::Escape);
+    m_state         = State::Normal;
+    if(was_escape) return Event{Key::Escape, true};
+    return std::nullopt;
+}
+
+std::optional<char> input::EventParser::take_reprocess() {
+    auto b = m_reprocess;
+    m_reprocess.reset();
+    return b;
 }

@@ -1,13 +1,14 @@
 #pragma once
 
 #include <trux/input/key.hpp>
-#include <variant>
 
 namespace trux::input {
 
-using EventData = std::variant<trux::input::KeyEvent>;
-
 struct Event {
-    EventData data;
+    char32_t code{};
+    bool     valid{false};
+
+    constexpr explicit operator bool() const noexcept { return valid; }
+    constexpr          operator char32_t() const noexcept { return code; }
 };
 }  // namespace trux::input

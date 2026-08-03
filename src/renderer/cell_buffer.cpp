@@ -14,6 +14,25 @@ bool renderer::CellBuffer::contains(layout::Position pos) const noexcept {
            pos.y < m_size.height;
 }
 
+std::vector<renderer::CellDiff>
+renderer::CellBuffer::diff(const CellBuffer& other) const {
+    std::vector<CellDiff> changes;
+
+    for(int y = 0; y < m_size.height; y++) {
+        for(int x = 0; x < m_size.width; x++) {
+            layout::Position pos{x, y};
+            if(at(pos) != other.at({pos})) {
+                changes.push_back({pos, at(pos)});
+            }
+        }
+    }
+    return changes;
+}
+
+// layout::Size renderer::CellBuffer::size() const {
+//     return m_size;
+// }
+
 void renderer::CellBuffer::resize(layout::Size size) {
     m_size = size;
     m_cells.assign(static_cast<std::size_t>(size.width * size.height), Cell{});

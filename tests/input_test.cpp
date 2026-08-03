@@ -8,30 +8,23 @@
 using namespace trux;
 
 void char_event_test() {
-    input::Event event{
-        input::KeyEvent{.key = input::Key::Char, .character = U'A'}
-    };
+    input::Event event{U'A', true};
 
-    auto& key = std::get<input::KeyEvent>(event.data);
-
-    assert(key.key == input::Key::Char);
-    assert(key.character == U'A');
+    assert(event);
+    assert(event.code == U'A');
 }
 
 void special_key_event_test() {
-    input::Event event{input::KeyEvent{.key = input::Key::Enter}};
+    input::Event event{input::Key::Enter, true};
 
-    auto& key = std::get<input::KeyEvent>(event.data);
-
-    assert(key.key == input::Key::Enter);
+    assert(event);
+    assert(event.code == input::Key::Enter);
 }
 
 void default_event_test() {
     input::Event event{};
 
-    auto& key = std::get<input::KeyEvent>(event.data);
-
-    assert(key.key == input::Key::Unknown);
+    assert(!event);
 }
 
 void input_queue_test() {
@@ -41,12 +34,8 @@ void input_queue_test() {
     assert(input.available());
 
     auto event = input.poll();
-    assert(event.has_value());
-
-    auto key = std::get<input::KeyEvent>(event->data);
-
-    assert(key.key == input::Key::Char);
-    assert(key.character == U'a');
+    assert(event);
+    assert(event.code == U'a');
     assert(!input.available());
 }
 

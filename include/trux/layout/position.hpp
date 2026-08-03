@@ -1,7 +1,6 @@
 #pragma once
 
 #include <compare>
-
 namespace trux::layout {
 struct Position {
     int x{};

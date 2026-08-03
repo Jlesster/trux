@@ -24,6 +24,9 @@ public:
     std::expected<void, std::string> init();
     std::expected<void, std::string> enable_raw_mode();
 
+    [[nodiscard]]
+    bool should_quit() const noexcept;
+
     void shutdown();
 
     [[nodiscard]]
@@ -31,7 +34,10 @@ public:
 
     void present(renderer::Renderer&);
 
+    [[nodiscard]]
     std::optional<char> read();
+    [[nodiscard]]
+    bool has_pending() const;
 
 private:
     struct Impl;

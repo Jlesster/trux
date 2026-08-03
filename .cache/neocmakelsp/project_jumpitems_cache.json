@@ -1,0 +1,39 @@
+{
+  "date": "2026-08-03T20:08:06.547731850+01:00",
+  "data": {
+    "CMAKE_CXX_STANDARD_REQUIRED": {
+      "location": {
+        "uri": "file:///home/jless/Code/cpp/Frameworks/trux/CMakeLists.txt",
+        "range": {
+          "start": {
+            "line": 8,
+            "character": 4
+          },
+          "end": {
+            "line": 8,
+            "character": 31
+          }
+        }
+      },
+      "document_info": "defined variable\nfrom: /home/jless/Code/cpp/Frameworks/trux/CMakeLists.txt",
+      "is_function": false
+    },
+    "CMAKE_CXX_STANDARD": {
+      "location": {
+        "uri": "file:///home/jless/Code/cpp/Frameworks/trux/CMakeLists.txt",
+        "range": {
+          "start": {
+            "line": 7,
+            "character": 4
+          },
+          "end": {
+            "line": 7,
+            "character": 22
+          }
+        }
+      },
+      "document_info": "defined variable\nfrom: /home/jless/Code/cpp/Frameworks/trux/CMakeLists.txt",
+      "is_function": false
+    }
+  }
+}

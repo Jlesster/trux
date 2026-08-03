@@ -2,8 +2,12 @@
 
 #include "trux/input/event_parser.hpp"
 
-#include <optional>
 #include <queue>
+
+namespace trux {
+class Terminal;
+}
+
 namespace trux::input {
 
 class Input {
@@ -14,7 +18,9 @@ public:
     bool available() const noexcept;
 
     [[nodiscard]]
-    std::optional<Event> poll();
+    Event poll();
+    [[nodiscard]]
+    Event poll(Terminal&);
 
 private:
     EventParser       m_parser;

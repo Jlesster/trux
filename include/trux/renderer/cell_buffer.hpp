@@ -7,6 +7,12 @@
 #include <vector>
 
 namespace trux::renderer {
+
+struct CellDiff {
+    layout::Position position;
+    Cell             cell;
+};
+
 class CellBuffer {
 public:
     Cell&       at(layout::Position);
@@ -16,6 +22,8 @@ public:
     bool contains(layout::Position) const noexcept;
     [[nodiscard]]
     layout::Size size() const noexcept;
+    [[nodiscard]]
+    std::vector<CellDiff> diff(const CellBuffer& other) const;
 
     void resize(layout::Size);
     void clear();

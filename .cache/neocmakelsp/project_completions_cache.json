@@ -1,0 +1,19 @@
+{
+  "date": "2026-08-03T20:08:06.547704700+01:00",
+  "data": {
+    "/home/jless/Code/cpp/Frameworks/trux/CMakeLists.txt": [
+      {
+        "label": "CMAKE_CXX_STANDARD",
+        "kind": 12,
+        "detail": "Value",
+        "documentation": "defined variable\nfrom: /home/jless/Code/cpp/Frameworks/trux/CMakeLists.txt"
+      },
+      {
+        "label": "CMAKE_CXX_STANDARD_REQUIRED",
+        "kind": 12,
+        "detail": "Value",
+        "documentation": "defined variable\nfrom: /home/jless/Code/cpp/Frameworks/trux/CMakeLists.txt"
+      }
+    ]
+  }
+}
