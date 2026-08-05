@@ -21,6 +21,28 @@ void trux::ansi::leave_alt_screen() {
     std::fflush(stdout);
 }
 
+void trux::ansi::enable_kitty_keyboard() {
+    std::print("\x1b[>1u");
+    std::fflush(stdout);
+}
+
+void trux::ansi::disable_kitty_keyboard() {
+    std::print("\x1b[>u");
+    std::fflush(stdout);
+}
+
+void trux::ansi::enable_mouse() {
+    std::print("\x1b[?1002h");
+    std::print("\x1b[?1006h");
+    std::fflush(stdout);
+}
+
+void trux::ansi::disable_mouse() {
+    std::print("\x1b[?1006l");
+    std::print("\x1b[?1002l");
+    std::fflush(stdout);
+}
+
 void trux::ansi::clear() {
     std::print("\x1b[2J");
     std::fflush(stdout);

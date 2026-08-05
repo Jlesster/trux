@@ -1,4 +1,7 @@
 builddir-linux/
+.direnv/
+.cache/
 CMakeUserPresets.json
 dump.sh
 trux-dump.md
+debug.log

@@ -1,3 +1,4 @@
+#include "trux/input/event.hpp"
 #include "trux/renderer/renderer.hpp"
 
 #include <asm-generic/ioctls.h>
@@ -10,6 +11,7 @@
 #include <csignal>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <print>
 #include <trux/terminal/ansi.hpp>
 #include <trux/terminal/terminal.hpp>
@@ -28,23 +30,23 @@ std::string sgr_codes(const trux::renderer::Cell& cell) {
         return style & static_cast<uint8_t>(s);
     };
 
-    std::string codes = std::format("38;2;{};{};{};48;2;{};{};{}",
-                                    cell.foreground.r,
-                                    cell.foreground.g,
-                                    cell.foreground.b,
-                                    cell.background.r,
-                                    cell.background.g,
-                                    cell.background.b);
+    std::string codes = "0;";
+
+    codes += std::format("38;2;{};{};{};48;2;{};{};{}",
+                         cell.foreground.r,
+                         cell.foreground.g,
+                         cell.foreground.b,
+                         cell.background.r,
+                         cell.background.g,
+                         cell.background.b);
 
     if(has(Style::Bold)) codes += ";1";
-    if(has(Style::Bold)) codes += ";2";
-    if(has(Style::Bold)) codes += ";3";
-    if(has(Style::Bold)) codes += ";4";
-    if(has(Style::Bold)) codes += ";5";
-    if(has(Style::Bold)) codes += ";6";
-    if(has(Style::Bold)) codes += ";7";
-    if(has(Style::Bold)) codes += ";8";
-    if(has(Style::Bold)) codes += ";9";
+    if(has(Style::Dim)) codes += ";2";
+    if(has(Style::Italic)) codes += ";3";
+    if(has(Style::Underline)) codes += ";4";
+    if(has(Style::Blink)) codes += ";5";
+    if(has(Style::Reverse)) codes += ";7";
+    if(has(Style::Strike)) codes += ";9";
 
     return codes;
 }
@@ -61,7 +63,12 @@ std::string utf8_encode(char32_t cp) {
         out += static_cast<char>(0xE0 | (cp >> 12));
         out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
         out += static_cast<char>(0x80 | (cp & 0x3F));
-    }  // [TODO] > 0xFFFF
+    } else if(cp <= 0x10FFFF) {
+        out += static_cast<char>(0xE0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
     return out;
 }
 
@@ -122,6 +129,12 @@ std::expected<void, std::string> Terminal::init() {
     // alternate screen
     ansi::enter_alt_screen();
 
+    // enable kitty keyboard protocol
+    ansi::enable_kitty_keyboard();
+
+    // enable mouse support
+    ansi::enable_mouse();
+
     // clear screen
     ansi::clear();
 
@@ -146,6 +159,12 @@ void Terminal::shutdown() {
     // show cursor
     ansi::show_cursor();
 
+    // disable mouse support
+    ansi::disable_mouse();
+
+    // disable kitty keyboard protocol
+    ansi::disable_kitty_keyboard();
+
     // leave alternate screen
     ansi::leave_alt_screen();
 
@@ -166,21 +185,32 @@ layout::Size Terminal::size() const {
 }
 
 void Terminal::present(renderer::Renderer& renderer) {
-    auto changes = renderer.back_buffer().diff(renderer.front_buffer());
+    m_renderer = &renderer;
 
-    for(const auto& [pos, cell] : changes) {
-        std::print("\x1b[{};{}H", pos.y + 1, pos.x + 1);
-        std::print("\x1b[0m");
-        std::print("\x1b[{}m", sgr_codes(cell));
-        std::print("{}", utf8_encode(cell.glyph));
+    for(const auto& batch : renderer.batches()) {
+        if(batch.cells.empty()) continue;
+        std::print("\x1b[{};{}H", batch.position.y + 1, batch.position.x + 1);
+
+        // std::print("\x1b[0m");
+        std::print("\x1b[{}m", sgr_codes(batch.cells.front()));
+
+        for(const auto& cell : batch.cells) {
+            std::print("{}", utf8_encode(cell.glyph));
+        }
     }
+
     ansi::flush();
     renderer.commit();
 }
 
-bool Terminal::has_pending() const {
+bool Terminal::dispatch(const input::Event& event) const {
+    if(!m_renderer) return false;
+    return m_renderer->dispatch(event);
+}
+
+bool Terminal::has_pending(int timeout) const {
     pollfd pfd{STDIN_FILENO, POLLIN, 0};
-    return ::poll(&pfd, 1, 0) > 0;
+    return ::poll(&pfd, 1, timeout) > 0;
 }
 
 }  // namespace trux

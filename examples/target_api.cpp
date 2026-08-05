@@ -31,12 +31,19 @@ int main() {
     auto split = root.h_split(20);
     // auto [split1, split2] = root.h_split(20);
 
+    // menu selection
+    int menu_selection1 = 0;
+    int menu_selection2 = 0;
+    int menu_offset1    = 0;
+    int menu_offset2    = 0;
+
     // creating widgets as variables and giving attribs
-    auto widget1 = component::List(dir_names) | component::BorderRounded;
-    auto widget2 = component::Menu(drop_options);
+    auto widget1 = component::Menu(dir_names, menu_offset1, menu_selection1) |
+                   component::BorderRounded;
+    auto widget2 = component::Menu(drop_options, menu_selection2, menu_offset2);
 
     // giving widgets attribs after creation
-    widget2 |= component::BorderSingle | component::Italic;
+    widget2 |= component::BorderRounded;
 
     // beginning and ending drawing sdl like
     while(running) {
@@ -44,7 +51,7 @@ int main() {
         {
             // the equivalent of frame.render_widget
             renderer.push(widget1, split[0]);
-            renderer.push(widget1, split[1]);
+            renderer.push(widget2, split[1]);
             // OR
             // renderer.push(widget1, split1);
             // renderer.push(widget1, split2);

@@ -7,6 +7,10 @@
 #include <memory>
 #include <optional>
 
+namespace trux::input {
+struct Event;
+}
+
 namespace trux {
 
 class Terminal {
@@ -26,7 +30,6 @@ public:
 
     [[nodiscard]]
     bool should_quit() const noexcept;
-
     void shutdown();
 
     [[nodiscard]]
@@ -35,12 +38,15 @@ public:
     void present(renderer::Renderer&);
 
     [[nodiscard]]
+    bool dispatch(const input::Event&) const;
+    [[nodiscard]]
     std::optional<char> read();
     [[nodiscard]]
-    bool has_pending() const;
+    bool has_pending(int timeout_ms = 0) const;
 
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
+    renderer::Renderer*   m_renderer = nullptr;
 };
 }  // namespace trux

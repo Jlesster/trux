@@ -20,6 +20,10 @@ public:
     Split v_split(int percent) const;
     [[nodiscard]]
     Split h_split(int percent) const;
+    [[nodiscard]]
+    Split v_split_fixed(int cells) const;
+    [[nodiscard]]
+    Split h_split_fixed(int cells) const;
 
     [[nodiscard]]
     constexpr Rect rect() const noexcept {

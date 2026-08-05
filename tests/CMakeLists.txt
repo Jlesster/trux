@@ -81,3 +81,31 @@ add_test(
     NAME Widget
     COMMAND widget_test
 )
+
+add_executable(focus_test
+    focus_test.cpp
+)
+
+target_link_libraries(focus_test
+    PRIVATE
+    ${PROJECT_NAME}_lib
+)
+
+add_test(
+    NAME focus
+    COMMAND focus_test
+)
+
+add_executable(event_parser_test
+    event_parser_test.cpp
+)
+
+target_link_libraries(event_parser_test
+    PRIVATE
+    ${PROJECT_NAME}_lib
+)
+
+add_test(
+    NAME event_parser
+    COMMAND event_parser_test
+)
