@@ -9,7 +9,6 @@
 
 #include <atomic>
 #include <csignal>
-#include <ctime>
 #include <expected>
 #include <memory>
 #include <optional>
@@ -249,6 +248,16 @@ bool Terminal::wait_readable(int                  primary_fd,
 
     m_last_ready_fd.reset();
     return false;
+}
+
+std::optional<char> Terminal::read() {
+    char byte{};
+
+    auto result = ::read(STDIN_FILENO, &byte, 1);
+
+    if(result <= 0) return std::nullopt;
+
+    return byte;
 }
 
 std::optional<int> Terminal::last_ready_fd() const noexcept {
