@@ -12,7 +12,7 @@ Not a widget framework — a compositor. Built in the spirit of SDL, Ratatui, an
 [![Tests](https://img.shields.io/badge/tests-CTest-brightgreen.svg?style=flat-square&logo=cmake&logoColor=white)](tests)
 [![Platform](https://img.shields.io/badge/platform-Linux-informational.svg?style=flat-square&logo=linux&logoColor=white)](#building)
 [![Status](https://img.shields.io/badge/status-early%20development-orange.svg?style=flat-square)](TODO.md)
-[![License](https://img.shields.io/badge/license-unspecified-lightgrey.svg?style=flat-square)](#license)
+[![License](https://img.shields.io/badge/license-MIT-purple.svg?style=flat-square)](#license)
 
 </div>
 
