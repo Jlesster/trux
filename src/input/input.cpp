@@ -57,13 +57,13 @@ input::Event input::Input::poll(Terminal&            terminal,
         }
         if(auto event = next_unconsumed(terminal)) return *event;
     }
-    return Event{};
+    return Event::quit();
 }
 
 std::optional<input::Event> input::Input::next_unconsumed(Terminal& terminal) {
     if(m_events.empty()) return std::nullopt;
     auto event = m_events.front();
     m_events.pop();
-    (void)terminal.dispatch(event);
+    event.consumed = terminal.dispatch(event);
     return event;
 }

@@ -81,7 +81,7 @@ See [`examples/target_api.cpp`](examples/target_api.cpp) for the full runnable v
 | Stateful input parser (arrows, function keys, CSI-u / Kitty modifiers) | ✅ |
 | Basic focus manager | ✅ |
 | Async task spawning + resize handling | ✅ |
-| Chord/keymap resolution, `TextArea`, floating regions, mouse support | 🚧 |
+| Chord/keymap resolution, `TextArea`, floating regions       | 🚧 |
 
 The 🚧 items, and everything beyond them, are tracked in detail in [`TODO.md`](TODO.md).
 
@@ -121,8 +121,8 @@ tests/            unit tests (CTest)
 
 ## License
 
-No license file is currently included in this repository.
+Licensed under MIT
 
 ## Author
 
-[Jlesster](https://codeberg.org/Jlesster) — also mirrored on [GitHub](https://github.com/Jlesster/trux)
+[Jlesster](https://codeberg.org/Jlesster)

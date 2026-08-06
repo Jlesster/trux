@@ -1,3 +1,4 @@
+#include "trux/component/border.hpp"
 #include "trux/component/component.hpp"
 #include "trux/focus/focus_manager.hpp"
 #include "trux/input/event.hpp"
@@ -27,6 +28,7 @@ void renderer::Renderer::begin_draw() {
 
 void renderer::Renderer::end_draw() {
     resolve();
+    coalesce_borders();
     m_batches = build_batches();
     m_focus.end_frame();
 }
@@ -103,16 +105,18 @@ void renderer::Renderer::put(layout::Position pos, char32_t c) {
 }
 
 void renderer::Renderer::push(component::ComponentBase& component,
-                              layout::Region            area) {
+                              layout::Region            area,
+                              bool                      modal) {
     m_commands.push(SetClip{area});
     component.build(area, m_commands);
     m_commands.push(ClearClip{});
 
     auto id = static_cast<focus::FocusID>(&component);
-    m_focus.register_focusable(id);
-    m_handlers.push_back(Handler{id, area, [&component](const input::Event& e) {
-                                     return component.handle(e);
-                                 }});
+    if(!modal) m_focus.register_focusable(id);
+    m_handlers.push_back(
+        Handler{id, area, modal, [&component](const input::Event& e) {
+                    return component.handle(e);
+                }});
 }
 
 void renderer::Renderer::text(layout::Region   region,
@@ -130,6 +134,11 @@ bool renderer::Renderer::dispatch(const input::Event& e) {
         resize(e.resize);
         return true;
     }
+
+    for(auto it = m_handlers.rbegin(); it != m_handlers.rend(); it++) {
+        if(it->modal) return it->fn(e);
+    }
+
     if(e.kind == input::EventKind::Key && e.code == input::Key::Tab) {
         if(e.mods.has(input::Mod::Shift)) m_focus.focus_prev();
         else m_focus.focus_next();
@@ -192,6 +201,50 @@ void renderer::Renderer::resolve() {
                 }
             },
             command);
+    }
+}
+
+void renderer::Renderer::coalesce_borders() {
+    auto size = m_back.size();
+    if(size.width <= 0 || size.height <= 0) return;
+
+    auto count =
+        static_cast<size_t>(size.width) * static_cast<size_t>(size.height);
+    std::vector<component::Classified> classified(count);
+
+    auto idx = [&](int x, int y) {
+        return static_cast<size_t>(y) * size.width + x;
+    };
+
+    for(int y = 0; y < size.height; y++)
+        for(int x = 0; x < size.width; x++)
+            classified[idx(x, y)] =
+                component::classify_border_glyph(m_back.at({x, y}).glyph);
+
+    for(int y = 0; y < size.height; y++) {
+        for(int x = 0; x < size.height; x++) {
+            auto& self = classified[idx(x, y)];
+            if(!self.is_border) continue;
+
+            uint8_t merged = self.mask;
+            auto    try_connect =
+                [&](int nx, int ny, uint8_t toward, uint8_t back) {
+                    if(nx < 0 || ny < 0 || nx >= size.width ||
+                       ny >= size.height)
+                        return;
+                    auto& n = classified[idx(nx, ny)];
+                    if(n.is_border && (n.mask & back)) merged |= toward;
+                };
+            try_connect(x, y - 1, component::North, component::South);
+            try_connect(x, y + 1, component::South, component::North);
+            try_connect(x - 1, y, component::West, component::East);
+            try_connect(x + 1, y, component::East, component::West);
+
+            if(merged == self.mask) continue;
+            auto glyph = component::glyph_for_mask(
+                component::junctions_for(self.style), merged);
+            if(glyph != U'\0') m_back.at({x, y}).glyph = glyph;
+        }
     }
 }
 

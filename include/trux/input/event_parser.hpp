@@ -27,6 +27,7 @@ private:
         Paste,
         CSI,
         SS3,
+        UTF8,
     };
 
     struct CsiParam {
@@ -37,9 +38,11 @@ private:
     State                 m_state{State::Normal};
     std::optional<char>   m_reprocess;
     std::string           m_paste_buffer;
+    std::string           m_utf8_buffer;
     std::size_t           m_paste_match{0};
     std::vector<CsiParam> m_params;
     CsiParam              m_current;
+    int                   m_utf8_remaining{0};
     bool                  m_in_sub{false};
     bool                  m_sgr_mouse{false};
 

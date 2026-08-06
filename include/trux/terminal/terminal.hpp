@@ -31,6 +31,7 @@ public:
 
     [[nodiscard]]
     bool should_quit() const noexcept;
+    void request_quit() noexcept;
     void shutdown();
 
     [[nodiscard]]

@@ -36,4 +36,11 @@ constexpr Modifiers decode_modifier_param(int param) noexcept {
     return m;
 }
 
+[[nodiscard]]
+constexpr Modifiers with(Mod m) noexcept {
+    Modifiers mods{};
+    mods.add(m);
+    return mods;
+}
+
 }  // namespace trux::input

@@ -2,9 +2,12 @@
 #include "trux/input/key.hpp"
 #include "trux/input/modifiers.hpp"
 #include "trux/input/mouse.hpp"
+#include "trux/renderer/cell.hpp"
+#include "trux/util/util.hpp"
 
 #include <algorithm>
 #include <execution>
+#include <format>
 #include <optional>
 #include <trux/input/event_parser.hpp>
 
@@ -39,11 +42,49 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
             if(byte == '\n') { return Event::key(Key::Enter); }
             if(byte == '\t') { return Event::key(Key::Tab); }
             if(byte == '\x7f') { return Event::key(Key::Backspace); }
+            if(byte == '\x17') {
+                return Event::key(Key::Backspace, input::with(Mod::Ctrl));
+            }
             if(byte >= 32 && byte <= 126) {
                 return Event::key(static_cast<char32_t>(byte));
             }
 
+            unsigned char b0 = static_cast<unsigned char>(byte);
+            if(b0 >= 0x80) {
+                int len = (b0 & 0xE0) == 0xC0   ? 2
+                          : (b0 & 0xF0) == 0xE0 ? 3
+                          : (b0 & 0xF8) == 0xF0 ? 4
+                                                : 0;
+
+                if(len == 0) return std::nullopt;
+
+                m_utf8_buffer.clear();
+                m_utf8_buffer.push_back(byte);
+                m_utf8_remaining = len - 1;
+                m_state          = State::UTF8;
+                return std::nullopt;
+            }
             return std::nullopt;
+        }
+
+        case State::UTF8: {
+            unsigned char b = static_cast<unsigned char>(byte);
+            if((b & 0xC0) != 0x80) {
+                m_state = State::Normal;
+                m_utf8_buffer.clear();
+                m_utf8_remaining = 0;
+                m_reprocess      = byte;
+                return std::nullopt;
+            }
+
+            m_utf8_buffer.push_back(byte);
+            if(--m_utf8_remaining > 0) return std::nullopt;
+
+            m_state      = State::Normal;
+            auto decoded = trux::util::decode_utf8(m_utf8_buffer);
+            m_utf8_buffer.clear();
+            if(!decoded) return std::nullopt;
+            return Event::key(decoded->first);
         }
 
         case State::Escape: {
@@ -254,7 +295,7 @@ input::EventParser::finish_sgr_mouse(char final_byte) {
 
     bool is_wheel  = cb & 64;
     bool is_motion = cb & 32;
-    bool btn_bits  = cb & 0x3;
+    int  btn_bits  = cb & 0x3;
 
     MouseEvent m{};
     m.position = {cx - 1, cy - 1};
@@ -266,7 +307,7 @@ input::EventParser::finish_sgr_mouse(char final_byte) {
     } else {
         m.button = (btn_bits == 0)   ? MouseButton::Left
                    : (btn_bits == 1) ? MouseButton::Middle
-                   : (btn_bits == 1) ? MouseButton::Right
+                   : (btn_bits == 2) ? MouseButton::Right
                                      : MouseButton::None;
 
         m.kind = is_motion             ? MouseKind::Drag
@@ -277,6 +318,13 @@ input::EventParser::finish_sgr_mouse(char final_byte) {
 }
 
 std::optional<input::Event> input::EventParser::resolve_pending() {
+    if(m_state == State::UTF8) {
+        m_state = State::Normal;
+        m_utf8_buffer.clear();
+        m_utf8_remaining = 0;
+        return std::nullopt;
+    }
+
     bool was_escape = (m_state == State::Escape || m_state == State::SS3);
     m_state         = State::Normal;
     if(was_escape) return Event::key(Key::Escape);

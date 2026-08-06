@@ -10,7 +10,7 @@
 
 namespace trux::input {
 
-enum class EventKind : uint8_t { Key, Mouse, Paste, Resize, Async };
+enum class EventKind : uint8_t { Key, Mouse, Paste, Resize, Async, Quit };
 
 struct Event {
     EventKind    kind{EventKind::Key};
@@ -20,6 +20,7 @@ struct Event {
     MouseEvent   mouse{};
     std::string  paste{};
     layout::Size resize{};
+    bool         consumed{false};
 
     constexpr explicit operator bool() const noexcept { return valid; }
     constexpr          operator char32_t() const noexcept { return code; }
@@ -51,6 +52,10 @@ struct Event {
             .code  = static_cast<char32_t>(fd),
             .valid = true,
         };
+    }
+    [[nodiscard]]
+    static constexpr Event quit() {
+        return Event{.kind = EventKind::Quit, .valid = true};
     }
     [[nodiscard]]
     static constexpr Event none() {

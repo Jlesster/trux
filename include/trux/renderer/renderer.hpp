@@ -53,8 +53,10 @@ public:
     void put(layout::Position, char32_t);
 
     template <component::ComponentType T>
-    void push(T& component, layout::Region);
-    void push(component::ComponentBase& component, layout::Region area);
+    void push(T& component, layout::Region area, bool modal = false);
+    void push(component::ComponentBase& component,
+              layout::Region            area,
+              bool                      modal = false);
 
     void text(layout::Region, layout::Position, std::string_view);
 
@@ -76,8 +78,10 @@ public:
 
 private:
     struct Handler {
+
         focus::FocusID id;
         layout::Region region;
+        bool           modal{false};
 
         std::function<bool(const input::Event&)> fn;
     };
@@ -99,16 +103,17 @@ private:
     std::vector<Handler> m_handlers;
 
     void resolve();
+    void coalesce_borders();
 };
 
 template <component::ComponentType T>
-void Renderer::push(T& component, layout::Region area) {
+void Renderer::push(T& component, layout::Region area, bool modal) {
     component.build(area, m_commands);
     if constexpr(input::Handleable<T>) {
         auto id = static_cast<focus::FocusID>(&component);
         m_focus.register_focusable(id);
         m_handlers.push_back(
-            Handler{id, area, [&component](const input::Event& e) {
+            Handler{id, area, modal, [&component](const input::Event& e) {
                         return component.handle(e);
                     }});
     }
