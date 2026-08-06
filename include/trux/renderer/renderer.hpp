@@ -3,6 +3,7 @@
 #include "trux/component/component.hpp"
 #include "trux/focus/focus_manager.hpp"
 #include "trux/input/event.hpp"
+#include "trux/layout/layout.hpp"
 #include "trux/layout/position.hpp"
 #include "trux/layout/region.hpp"
 #include "trux/layout/size.hpp"
@@ -35,6 +36,7 @@ public:
     void commit();
 
     void resize(layout::Size size);
+    void resize(layout::Region& root);
 
     [[nodiscard]]
     CellBuffer& back_buffer() noexcept;
@@ -65,6 +67,10 @@ public:
     focus::FocusManager focus() noexcept {
         return m_focus;
     }
+    [[nodiscard]]
+    layout::Region region() const noexcept {
+        return m_root;
+    }
 
     inline const RenderBatches& batches() const noexcept { return m_batches; }
 
@@ -83,7 +89,11 @@ private:
 
     std::optional<layout::Region> m_clip;
 
-    layout::Size m_size;
+    layout::Size   m_size;
+    layout::Region m_root{
+        {0, 0},
+        {0, 0}
+    };
 
     focus::FocusManager  m_focus;
     std::vector<Handler> m_handlers;

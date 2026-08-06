@@ -109,3 +109,17 @@ add_test(
     NAME event_parser
     COMMAND event_parser_test
 )
+
+add_executable(async_test
+    async_test.cpp
+)
+
+target_link_libraries(async_test
+    PRIVATE
+    ${PROJECT_NAME}_lib
+)
+
+add_test(
+    NAME async
+    COMMAND async_test
+)

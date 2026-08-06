@@ -13,8 +13,8 @@ struct DrawText {
     std::string_view text;
 
     style::Style style{};
-    style::Color fg{255, 255, 255};
-    style::Color bg{0, 0, 0};
+    style::Color fg{255, 255, 255, 255};
+    style::Color bg{0, 0, 0, 0};
 };
 
 struct DrawCell {

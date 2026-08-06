@@ -55,8 +55,6 @@ struct Menu {
 
     [[nodiscard]]
     bool handle(const input::Event& event) {
-        std::fprintf(stderr, "Menu::handle code=%u\n", event.code);
-        std::fprintf(stderr, "selection=%u\n", selected);
         if(items.empty()) return false;
         auto keep_visible = [this] {
             if(selected < scroll_offset) {

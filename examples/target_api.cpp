@@ -1,4 +1,3 @@
-#include "trux/component/list.hpp"
 #include "trux/component/menu.hpp"
 #include "trux/input/input.hpp"
 #include "trux/input/key.hpp"
@@ -24,11 +23,11 @@ int main() {
     if(auto result = terminal.enable_raw_mode(); !result) return 1;
 
     // vector examples for lists
-    std::vector<std::string> dir_names    = {"foo", "bar", "baz"};
+    std::vector<std::string> dir_names    = {"😀", "╭", "界"};
     std::vector<std::string> drop_options = {"yes", "no", "maybe"};
 
     // splitting with either which we already have
-    auto split = root.h_split(20);
+    auto& split = root.h_split(20);
     // auto [split1, split2] = root.h_split(20);
 
     // menu selection
@@ -47,6 +46,7 @@ int main() {
 
     // beginning and ending drawing sdl like
     while(running) {
+        renderer.resize(root);
         renderer.begin_draw();
         {
             // the equivalent of frame.render_widget

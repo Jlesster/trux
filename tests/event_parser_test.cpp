@@ -219,6 +219,27 @@ void test_mouse_shift_modifier() {
     assert(e && e->mouse.mods.has(input::Mod::Shift));
 }
 
+void test_bracketed_paste_basic() {
+    input::EventParser parser;
+    auto               e = feed(parser, "\x1b[200~hello\x1b[201~");
+    assert(e && e->kind == input::EventKind::Paste);
+    assert(e->paste == "hello");
+}
+
+void test_bracketed_paste_with_embedded_escape() {
+    input::EventParser parser;
+    // pasted content containing a bare ESC that isn't the real terminator
+    auto e = feed(parser, "\x1b[200~a\x1bXb\x1b[201~");
+    assert(e && e->kind == input::EventKind::Paste);
+    assert(e->paste == "a\x1bXb");
+}
+
+void test_bracketed_paste_empty() {
+    input::EventParser parser;
+    auto               e = feed(parser, "\x1b[200~\x1b[201~");
+    assert(e && e->paste.empty());
+}
+
 int main() {
     test::run("plain_ascii", test_plain_ascii);
     test::run("enter_tab_backspace", test_enter_tab_backspace);
@@ -241,4 +262,8 @@ int main() {
     test::run("mouse_drag", test_mouse_drag);
     test::run("mouse_scroll", test_mouse_scroll);
     test::run("mouse_shift_modifier", test_mouse_shift_modifier);
+    test::run("bracketed_paste_basic", test_bracketed_paste_basic);
+    test::run("bracketed_paste_with_embedded_escape",
+              test_bracketed_paste_with_embedded_escape);
+    test::run("bracketed_paste_empty", test_bracketed_paste_empty);
 }

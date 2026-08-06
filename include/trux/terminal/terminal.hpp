@@ -6,6 +6,7 @@
 #include <expected>
 #include <memory>
 #include <optional>
+#include <span>
 
 namespace trux::input {
 struct Event;
@@ -35,6 +36,14 @@ public:
     [[nodiscard]]
     layout::Size size() const;
 
+    [[nodiscard]]
+    bool wait_readable(int                  primary_fd,
+                       std::span<const int> extra_fds,
+                       int                  timeout_ms);
+
+    [[nodiscard]]
+    std::optional<int> last_ready_fd() const noexcept;
+
     void present(renderer::Renderer&);
 
     [[nodiscard]]
@@ -43,10 +52,13 @@ public:
     std::optional<char> read();
     [[nodiscard]]
     bool has_pending(int timeout_ms = 0) const;
+    [[nodiscard]]
+    bool resized() const noexcept;
 
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
+    std::optional<int>    m_last_ready_fd;
     renderer::Renderer*   m_renderer = nullptr;
 };
 }  // namespace trux

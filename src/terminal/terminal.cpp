@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <csignal>
+#include <ctime>
 #include <expected>
 #include <memory>
 #include <optional>
@@ -18,9 +19,21 @@
 
 namespace {
 std::atomic<bool> g_signal_requested{false};
+std::atomic<bool> g_resize_requested{false};
 
 extern "C" void handle_signal(int) {
     g_signal_requested.store(true, std::memory_order_relaxed);
+}
+extern "C" void handle_resize(int) {
+    g_resize_requested.store(true, std::memory_order_relaxed);
+}
+
+void install_handler(int sig, void (*handler)(int)) {
+    struct sigaction sa{};
+    sa.sa_handler = handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+    sigaction(sig, &sa, nullptr);
 }
 
 std::string sgr_codes(const trux::renderer::Cell& cell) {
@@ -32,13 +45,17 @@ std::string sgr_codes(const trux::renderer::Cell& cell) {
 
     std::string codes = "0;";
 
-    codes += std::format("38;2;{};{};{};48;2;{};{};{}",
+    codes += std::format("38;2;{};{};{}",
                          cell.foreground.r,
                          cell.foreground.g,
-                         cell.foreground.b,
-                         cell.background.r,
-                         cell.background.g,
-                         cell.background.b);
+                         cell.foreground.b);
+
+    if(cell.background.a > 0) {
+        codes += std::format(";48;2;{};{};{}",
+                             cell.background.r,
+                             cell.background.g,
+                             cell.background.b);
+    }
 
     if(has(Style::Bold)) codes += ";1";
     if(has(Style::Dim)) codes += ";2";
@@ -64,7 +81,7 @@ std::string utf8_encode(char32_t cp) {
         out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
         out += static_cast<char>(0x80 | (cp & 0x3F));
     } else if(cp <= 0x10FFFF) {
-        out += static_cast<char>(0xE0 | (cp >> 18));
+        out += static_cast<char>(0xF0 | (cp >> 18));
         out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
         out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
         out += static_cast<char>(0x80 | (cp & 0x3F));
@@ -132,6 +149,9 @@ std::expected<void, std::string> Terminal::init() {
     // enable kitty keyboard protocol
     ansi::enable_kitty_keyboard();
 
+    // bracketed paste
+    ansi::enable_bracketed_paste();
+
     // enable mouse support
     ansi::enable_mouse();
 
@@ -141,8 +161,9 @@ std::expected<void, std::string> Terminal::init() {
     // hide cursor
     ansi::hide_cursor();
 
-    std::signal(SIGINT, handle_signal);
-    std::signal(SIGTERM, handle_signal);
+    install_handler(SIGINT, handle_signal);
+    install_handler(SIGTERM, handle_signal);
+    install_handler(SIGWINCH, handle_resize);
 
     m_impl->initialized = true;
     return {};
@@ -161,6 +182,9 @@ void Terminal::shutdown() {
 
     // disable mouse support
     ansi::disable_mouse();
+
+    // bracketed paste
+    ansi::disable_bracketed_paste();
 
     // disable kitty keyboard protocol
     ansi::disable_kitty_keyboard();
@@ -203,6 +227,34 @@ void Terminal::present(renderer::Renderer& renderer) {
     renderer.commit();
 }
 
+bool Terminal::wait_readable(int                  primary_fd,
+                             std::span<const int> extra_fds,
+                             int                  timeout_ms) {
+    std::vector<pollfd> fds;
+    fds.push_back({primary_fd, POLLIN, 0});
+    for(int fd : extra_fds) fds.push_back({fd, POLLIN, 0});
+
+    int result = ::poll(fds.data(), fds.size(), timeout_ms);
+    if(result <= 0) {
+        m_last_ready_fd.reset();
+        return false;
+    }
+
+    for(const auto& pfd : fds) {
+        if(pfd.revents & POLLIN) {
+            m_last_ready_fd = pfd.fd;
+            return true;
+        }
+    }
+
+    m_last_ready_fd.reset();
+    return false;
+}
+
+std::optional<int> Terminal::last_ready_fd() const noexcept {
+    return m_last_ready_fd;
+}
+
 bool Terminal::dispatch(const input::Event& event) const {
     if(!m_renderer) return false;
     return m_renderer->dispatch(event);
@@ -211,6 +263,10 @@ bool Terminal::dispatch(const input::Event& event) const {
 bool Terminal::has_pending(int timeout) const {
     pollfd pfd{STDIN_FILENO, POLLIN, 0};
     return ::poll(&pfd, 1, timeout) > 0;
+}
+
+bool Terminal::resized() const noexcept {
+    return g_resize_requested.exchange(false, std::memory_order_relaxed);
 }
 
 }  // namespace trux

@@ -1,21 +1,25 @@
 #pragma once
 
 #include "trux/input/mouse.hpp"
+#include "trux/layout/size.hpp"
 
 #include <concepts>
+#include <string>
 #include <trux/input/key.hpp>
 #include <trux/input/modifiers.hpp>
 
 namespace trux::input {
 
-enum class EventKind : uint8_t { Key, Mouse };
+enum class EventKind : uint8_t { Key, Mouse, Paste, Resize, Async };
 
 struct Event {
-    EventKind  kind{EventKind::Key};
-    char32_t   code{};
-    Modifiers  mods{};
-    bool       valid{false};
-    MouseEvent mouse{};
+    EventKind    kind{EventKind::Key};
+    char32_t     code{};
+    Modifiers    mods{};
+    bool         valid{false};
+    MouseEvent   mouse{};
+    std::string  paste{};
+    layout::Size resize{};
 
     constexpr explicit operator bool() const noexcept { return valid; }
     constexpr          operator char32_t() const noexcept { return code; }
@@ -30,6 +34,23 @@ struct Event {
                      .mods  = m.mods,
                      .valid = true,
                      .mouse = m};
+    }
+    [[nodiscard]]
+    static Event from_paste(std::string text) noexcept {
+        return Event{
+            .kind = EventKind::Paste, .valid = true, .paste = std::move(text)};
+    }
+    [[nodiscard]]
+    static constexpr Event from_resize(layout::Size size) noexcept {
+        return Event{.kind = EventKind::Resize, .valid = true, .resize = size};
+    }
+    [[nodiscard]]
+    static constexpr Event from_async(int fd) noexcept {
+        return Event{
+            .kind  = EventKind::Async,
+            .code  = static_cast<char32_t>(fd),
+            .valid = true,
+        };
     }
     [[nodiscard]]
     static constexpr Event none() {

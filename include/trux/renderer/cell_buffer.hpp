@@ -26,6 +26,7 @@ public:
     std::vector<CellDiff> diff(const CellBuffer& other) const;
 
     void resize(layout::Size);
+    void invalidate();
     void clear();
 
     constexpr auto operator<=>(const CellBuffer&) const = default;

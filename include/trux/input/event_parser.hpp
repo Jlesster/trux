@@ -24,6 +24,7 @@ private:
     enum class State {
         Normal,
         Escape,
+        Paste,
         CSI,
         SS3,
     };
@@ -33,9 +34,10 @@ private:
         int sub{-1};
     };
 
-    State               m_state{State::Normal};
-    std::optional<char> m_reprocess;
-
+    State                 m_state{State::Normal};
+    std::optional<char>   m_reprocess;
+    std::string           m_paste_buffer;
+    std::size_t           m_paste_match{0};
     std::vector<CsiParam> m_params;
     CsiParam              m_current;
     bool                  m_in_sub{false};

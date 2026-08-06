@@ -1,8 +1,10 @@
 #include "trux/component/component.hpp"
 #include "trux/focus/focus_manager.hpp"
 #include "trux/input/event.hpp"
+#include "trux/layout/layout.hpp"
 #include "trux/layout/position.hpp"
 #include "trux/layout/region.hpp"
+#include "trux/renderer/cell.hpp"
 #include "trux/renderer/draw_command.hpp"
 #include "trux/util/util.hpp"
 
@@ -20,6 +22,7 @@ void renderer::Renderer::begin_draw() {
     m_commands.clear();
     m_handlers.clear();
     m_focus.begin_frame();
+    m_root = layout::init(m_size);
 }
 
 void renderer::Renderer::end_draw() {
@@ -35,7 +38,11 @@ void renderer::Renderer::resize(layout::Size size) {
 
     m_size = size;
     m_front.resize(size);
+    m_front.invalidate();
     m_back.resize(size);
+}
+void renderer::Renderer::resize(layout::Region& root) {
+    layout::propagate_resize(root, m_size);
 }
 
 renderer::CellBuffer& renderer::Renderer::back_buffer() noexcept {
@@ -52,23 +59,24 @@ const renderer::CellBuffer& renderer::Renderer::front_buffer() const noexcept {
 
 renderer::RenderBatches renderer::Renderer::build_batches() const {
     RenderBatches batches;
-    auto          changes = m_back.diff(m_front);
+
+    auto changes   = m_back.diff(m_front);
+    int  running_x = 0;
 
     for(const auto& change : changes) {
         if(!batches.empty()) {
             auto& batch = batches.back();
-            auto  expected_x =
-                batch.position.x + static_cast<int>(batch.cells.size());
-
             if(change.position.y == batch.position.y &&
-               change.position.x == expected_x &&
+               change.position.x == running_x &&
                can_merge(batch.cells.back(), change.cell)) {
                 batch.cells.push_back(change.cell);
+                running_x += util::glyph_width(change.cell.glyph);
                 continue;
             }
         }
         batches.push_back(
             RenderBatch{.position = change.position, .cells = {change.cell}});
+        running_x = change.position.x + util::glyph_width(change.cell.glyph);
     }
     return batches;
 }
@@ -81,7 +89,13 @@ bool renderer::Renderer::can_merge(const Cell& prev, const Cell& next) {
 void renderer::Renderer::put(layout::Position pos, Cell cell) {
     if(m_clip && !m_clip->contains(pos)) return;
     if(!m_back.contains(pos)) return;
-    m_back.at(pos) = cell;
+
+    auto& dst      = m_back.at(pos);
+    dst.background = blend(dst.background, cell.background);
+    dst.foreground = blend(dst.foreground, cell.foreground);
+
+    if(cell.glyph != U' ') dst.glyph = cell.glyph;
+    dst.style = cell.style;
 }
 
 void renderer::Renderer::put(layout::Position pos, char32_t c) {
@@ -112,6 +126,10 @@ void renderer::Renderer::text(layout::Region   region,
 }
 
 bool renderer::Renderer::dispatch(const input::Event& e) {
+    if(e.kind == input::EventKind::Resize) {
+        resize(e.resize);
+        return true;
+    }
     if(e.kind == input::EventKind::Key && e.code == input::Key::Tab) {
         if(e.mods.has(input::Mod::Shift)) m_focus.focus_prev();
         else m_focus.focus_next();
@@ -145,11 +163,15 @@ void renderer::Renderer::resolve() {
                     std::string_view rest = cmd.text;
                     while(auto decoded = util::decode_utf8(rest)) {
                         auto [cp, len] = *decoded;
+                        int width      = std::max(1, util::glyph_width(cp));
                         put(pos,
                             Cell{.glyph      = cp,
                                  .foreground = cmd.fg,
                                  .background = cmd.bg,
                                  .style      = cmd.style});
+                        for(int i = 1; i < width; i++)
+                            put({pos.x + i, pos.y},
+                                Cell{.glyph = kContinuationGlyph});
                         pos.x += util::glyph_width(cp);
                         rest.remove_prefix(len);
                     }

@@ -1,5 +1,6 @@
 #include "test.hpp"
 #include "trux/layout/position.hpp"
+#include "trux/renderer/renderer.hpp"
 
 #include <cassert>
 #include <trux/layout/region.hpp>
@@ -16,7 +17,7 @@ void clipping_test() {
     assert(!region.contains({9, 10}));
 }
 
-void region_translation_test() {
+void test_region_translation_test() {
     auto region = layout::Region{
         {10, 10},
         {20, 20}
@@ -29,7 +30,23 @@ void region_translation_test() {
     assert(region.absolute({5, 5}) == offset);
 }
 
+void test_region_reflects_size_after_resize() {
+    renderer::Renderer r({80, 24});
+    r.begin_draw();
+    assert(r.region().size().width == 80);
+    assert(r.region().size().height == 24);
+    r.end_draw();
+
+    r.resize({100, 30});
+    r.begin_draw();
+    assert(r.region().size().width == 100);
+    assert(r.region().size().height == 30);
+    r.end_draw();
+}
+
 int main() {
     test::run("clipping test", clipping_test);
-    test::run("region_translation test", region_translation_test);
+    test::run("region_translation test", test_region_translation_test);
+    test::run("region_reflects_size_after_resize test",
+              test_region_reflects_size_after_resize);
 }

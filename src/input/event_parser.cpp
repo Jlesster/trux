@@ -3,6 +3,7 @@
 #include "trux/input/modifiers.hpp"
 #include "trux/input/mouse.hpp"
 
+#include <algorithm>
 #include <execution>
 #include <optional>
 #include <trux/input/event_parser.hpp>
@@ -105,7 +106,39 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
 
             m_params.push_back(m_current);
             m_state = State::Normal;
+            if(byte == '~' && !m_sgr_mouse && param(0, 0) == 200) {
+                m_state = State::Paste;
+                m_paste_buffer.clear();
+                m_paste_match = 0;
+                return std::nullopt;
+            }
             return m_sgr_mouse ? finish_sgr_mouse(byte) : finish_csi(byte);
+        }
+
+        case State::Paste: {
+            static constexpr std::string_view end_seq = "\x1b[201~";
+
+            if(byte == end_seq[m_paste_match]) {
+                m_paste_match++;
+                if(m_paste_match == end_seq.size()) {
+                    m_state   = State::Normal;
+                    auto text = std::move(m_paste_buffer);
+                    m_paste_buffer.clear();
+                    m_paste_match = 0;
+                    return Event::from_paste(std::move(text));
+                }
+                return std::nullopt;
+            }
+            if(m_paste_match > 0) {
+                m_paste_buffer.append(end_seq.substr(0, m_paste_match));
+                m_paste_match = 0;
+                if(byte == end_seq[0]) {
+                    m_paste_match = 1;
+                    return std::nullopt;
+                }
+            }
+            m_paste_buffer.push_back(byte);
+            return std::nullopt;
         }
     }
 

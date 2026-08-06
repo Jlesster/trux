@@ -13,4 +13,4 @@ enum class Style : uint8_t {
     Dim       = 1 << 5,
     Strike    = 1 << 6,
 };
-}
+}  // namespace trux::style

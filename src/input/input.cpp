@@ -1,5 +1,8 @@
+#include "trux/async/executor.hpp"
 #include "trux/input/event.hpp"
 #include "trux/terminal/terminal.hpp"
+
+#include <unistd.h>
 
 #include <optional>
 #include <trux/input/event.hpp>
@@ -21,10 +24,25 @@ input::Event input::Input::poll() {
     m_events.pop();
     return event;
 }
-input::Event input::Input::poll(Terminal& terminal) {
+input::Event input::Input::poll(Terminal&            terminal,
+                                std::span<const int> extra_fds) {
     if(auto event = next_unconsumed(terminal)) return *event;
 
     while(!terminal.should_quit()) {
+        if(terminal.resized()) {
+            m_events.push(Event::from_resize(terminal.size()));
+            if(auto event = next_unconsumed(terminal)) return *event;
+        }
+
+        int async_fd = async::Executor::instance().fd();
+        if(!terminal.wait_readable(STDIN_FILENO, std::array{async_fd}, 100))
+            continue;
+
+        if(auto ready = terminal.last_ready_fd(); ready && *ready == async_fd) {
+            async::Executor::instance().run_pending(async_fd);
+            continue;
+        }
+
         auto byte = terminal.read();
         if(!byte) continue;
         push(*byte);

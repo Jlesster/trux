@@ -2,7 +2,6 @@
 
 #include "trux/input/event_parser.hpp"
 
-#include <functional>
 #include <queue>
 
 namespace trux {
@@ -20,7 +19,7 @@ public:
     [[nodiscard]]
     Event poll();
     [[nodiscard]]
-    Event poll(Terminal&);
+    Event poll(Terminal&, std::span<const int> extra_fds = {});
 
 private:
     [[nodiscard]]

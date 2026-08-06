@@ -43,6 +43,16 @@ void trux::ansi::disable_mouse() {
     std::fflush(stdout);
 }
 
+void trux::ansi::enable_bracketed_paste() {
+    std::print("\x1b[?2004h");
+    std::fflush(stdout);
+}
+
+void trux::ansi::disable_bracketed_paste() {
+    std::print("\x1b[?2004l");
+    std::fflush(stdout);
+}
+
 void trux::ansi::clear() {
     std::print("\x1b[2J");
     std::fflush(stdout);

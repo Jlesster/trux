@@ -14,6 +14,9 @@ void disable_kitty_keyboard();
 void enable_mouse();
 void disable_mouse();
 
+void enable_bracketed_paste();
+void disable_bracketed_paste();
+
 void clear();
 void flush();
 }  // namespace trux::ansi

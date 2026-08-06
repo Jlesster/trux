@@ -1,3 +1,5 @@
+#include "trux/renderer/cell.hpp"
+
 #include <cassert>
 #include <trux/renderer/cell_buffer.hpp>
 
@@ -21,6 +23,7 @@ renderer::CellBuffer::diff(const CellBuffer& other) const {
     for(int y = 0; y < m_size.height; y++) {
         for(int x = 0; x < m_size.width; x++) {
             layout::Position pos{x, y};
+            if(at(pos).glyph == kContinuationGlyph) continue;
             if(at(pos) != other.at({pos})) {
                 changes.push_back({pos, at(pos)});
             }
@@ -36,6 +39,10 @@ renderer::CellBuffer::diff(const CellBuffer& other) const {
 void renderer::CellBuffer::resize(layout::Size size) {
     m_size = size;
     m_cells.assign(static_cast<std::size_t>(size.width * size.height), Cell{});
+}
+
+void renderer::CellBuffer::invalidate() {
+    for(auto& cell : m_cells) cell.glyph = kInvalidGlyph;
 }
 
 void renderer::CellBuffer::clear() { std::ranges::fill(m_cells, Cell{}); }
