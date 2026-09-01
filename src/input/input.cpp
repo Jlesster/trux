@@ -35,8 +35,10 @@ input::Event input::Input::poll(Terminal&            terminal,
         }
 
         int async_fd = async::Executor::instance().fd();
-        if(!terminal.wait_readable(STDIN_FILENO, std::array{async_fd}, 100))
+        if(!terminal.wait_readable(STDIN_FILENO, std::array{async_fd}, 100)) {
+            if(m_want_tick) return Event::tick();
             continue;
+        }
 
         if(auto ready = terminal.last_ready_fd(); ready && *ready == async_fd) {
             async::Executor::instance().run_pending(async_fd);

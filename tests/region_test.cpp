@@ -49,4 +49,5 @@ int main() {
     test::run("region_translation test", test_region_translation_test);
     test::run("region_reflects_size_after_resize test",
               test_region_reflects_size_after_resize);
+    return test::summary();
 }

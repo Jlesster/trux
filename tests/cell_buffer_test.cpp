@@ -58,4 +58,5 @@ int main() {
               test_blend_fully_opaque_src_overwrites_dst);
     test::run("transparent_over_transparent_test",
               test_blend_transparent_over_transparent_stays_transparent);
+    return test::summary();
 }

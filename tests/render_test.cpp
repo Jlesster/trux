@@ -34,4 +34,5 @@ void text_test() {
 int main() {
     test::run("render test", render_test);
     test::run("text test", text_test);
+    return test::summary();
 }

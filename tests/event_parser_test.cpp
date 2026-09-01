@@ -42,19 +42,30 @@ void test_enter_tab_backspace() {
 void test_standalone_escape_and_reprocess() {
     input::EventParser parser;
 
-    // ESC not followed by '[' resolves immediately to Key::Escape and
-    // queues the following byte for reprocessing as a normal event.
     auto first = parser.parse('\x1b');
     assert(!first.has_value());
     assert(parser.pending());
 
-    auto second = parser.parse('x');
+    auto second = parser.parse('\x1b');
     assert(second.has_value());
     assert(second->code == input::Key::Escape);
 
     auto reprocess = parser.take_reprocess();
     assert(reprocess.has_value());
-    assert(*reprocess == 'x');
+    assert(*reprocess == '\x1b');
+}
+
+void test_escape_printable_is_alt_key() {
+    input::EventParser parser;
+
+    auto first = parser.parse('\x1b');
+    assert(!first.has_value());
+
+    auto second = parser.parse('x');
+    assert(second.has_value());
+    assert(second->code == static_cast<char32_t>('x'));
+    assert(second->mods.has(input::Mod::Alt));
+    assert(!parser.pending());
 }
 
 void test_resolve_pending_on_bare_escape() {
@@ -247,6 +258,7 @@ int main() {
               test_standalone_escape_and_reprocess);
     test::run("resolve_pending_on_bare_escape",
               test_resolve_pending_on_bare_escape);
+    test::run("escape_printable_is_alt_key", test_escape_printable_is_alt_key);
     test::run("arrow_keys_no_modifier", test_arrow_keys_no_modifier);
     test::run("arrow_key_with_ctrl_modifier",
               test_arrow_key_with_ctrl_modifier);
@@ -266,4 +278,5 @@ int main() {
     test::run("bracketed_paste_with_embedded_escape",
               test_bracketed_paste_with_embedded_escape);
     test::run("bracketed_paste_empty", test_bracketed_paste_empty);
+    return test::summary();
 }

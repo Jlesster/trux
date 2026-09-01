@@ -16,7 +16,7 @@ struct Label {
 
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         cmd.push(renderer::DrawText{
-            {area.position().x + 1, area.position().y},
+            {area.position().x, area.position().y},
             text
         });
     }

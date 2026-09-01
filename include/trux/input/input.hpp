@@ -13,6 +13,7 @@ namespace trux::input {
 class Input {
 public:
     void push(char byte);
+    void set_want_tick(bool want) noexcept { m_want_tick = want; }
 
     [[nodiscard]]
     bool available() const noexcept;
@@ -25,6 +26,7 @@ private:
     [[nodiscard]]
     std::optional<Event> next_unconsumed(Terminal&);
 
+    bool              m_want_tick = false;
     EventParser       m_parser;
     std::queue<Event> m_events;
 };

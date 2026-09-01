@@ -23,6 +23,8 @@ target_include_directories(${PROJECT_NAME}_lib PUBLIC include)
 # --- Executables ---
 add_executable(target_api examples/target_api.cpp)
 target_link_libraries(target_api PRIVATE ${PROJECT_NAME}_lib)
+add_executable(keymap_example examples/keymap_example.cpp)
+target_link_libraries(keymap_example PRIVATE ${PROJECT_NAME}_lib)
 add_executable(example examples/example.cpp)
 target_link_libraries(example PRIVATE ${PROJECT_NAME}_lib)
 

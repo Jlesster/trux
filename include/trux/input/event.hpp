@@ -10,7 +10,7 @@
 
 namespace trux::input {
 
-enum class EventKind : uint8_t { Key, Mouse, Paste, Resize, Async, Quit };
+enum class EventKind : uint8_t { Key, Mouse, Paste, Resize, Async, Quit, Tick };
 
 struct Event {
     EventKind    kind{EventKind::Key};
@@ -66,6 +66,10 @@ struct Event {
     [[nodiscard]]
     static constexpr Event none() {
         return Event{};
+    }
+    [[nodiscard]]
+    static constexpr Event tick() noexcept {
+        return Event{.kind = EventKind::Tick, .valid = true};
     }
 };
 

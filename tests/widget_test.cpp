@@ -10,6 +10,7 @@
 #include "trux/renderer/renderer.hpp"
 
 #include <cassert>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -181,6 +182,7 @@ void dropdown_test() {
     std::vector<std::string> options       = {"yes", "no", "maybe"};
     int                      scroll_offset = 0;
     auto dropdown = component::Dropdown(options, scroll_offset);
+    dropdown.open = true;
 
     renderer.begin_draw();
     renderer.push(dropdown, layout::init({20, 5}));
@@ -243,4 +245,6 @@ int main() {
     test::run("dropdown default state", dropdown_default_state_test);
 
     test::run("container builds both children", container_test);
+
+    return test::summary();
 }

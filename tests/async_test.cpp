@@ -87,5 +87,5 @@ int main() {
         assert(ran_elsewhere.load());
     });
 
-    return 0;
+    return test::summary();
 }

@@ -231,4 +231,5 @@ int main() {
               test_mouse_click_outside_any_region_leaves_focus_unchanged);
     test::run("mouse_click_overlap_prefers_last_pushed",
               test_mouse_click_overlap_prefers_last_pushed);
+    return test::summary();
 }

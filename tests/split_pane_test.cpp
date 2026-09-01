@@ -12,4 +12,7 @@ void test_vertical_split() {
     assert(left.size().width == 20);
 }
 
-int main() { test::run("vertical_split", test_vertical_split); }
+int main() {
+    test::run("vertical_split", test_vertical_split);
+    return test::summary();
+}

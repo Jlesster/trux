@@ -34,4 +34,5 @@ int main() {
     test::run("special key event", special_key_event_test);
     test::run("default event", default_event_test);
     test::run("input queue test", input_queue_test);
+    return test::summary();
 }
