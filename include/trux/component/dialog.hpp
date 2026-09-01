@@ -4,6 +4,7 @@
 #include "trux/layout/region.hpp"
 #include "trux/layout/size.hpp"
 #include "trux/renderer/draw_command_buffer.hpp"
+#include "trux/style/color.hpp"
 
 #include <algorithm>
 #include <memory>
@@ -30,6 +31,7 @@ template <ComponentType T> struct Dialog {
     layout::Size     size{40, 7};
     std::string_view title{};
     ComponentFlags   flags{};
+    style::Color     border_color{255, 255, 255, 255};
     bool*            open = nullptr;
 
     T content;
@@ -40,7 +42,7 @@ template <ComponentType T> struct Dialog {
 
         auto inner = area;
         if(auto border = active_border(flags)) {
-            build_border(area, *border, cmd);
+            build_border(area, *border, cmd, border_color);
             inner = inset(area);
         }
 

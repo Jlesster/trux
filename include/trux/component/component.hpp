@@ -4,6 +4,7 @@
 #include "trux/input/event.hpp"
 #include "trux/layout/region.hpp"
 #include "trux/renderer/draw_command_buffer.hpp"
+#include "trux/style/color.hpp"
 
 #include <concepts>
 #include <memory>
@@ -30,6 +31,9 @@ concept ComponentType = requires(const T&                     component,
     { component.flags } -> std::same_as<const ComponentFlags&>;
     { component.build(area, commands) } -> std::same_as<void>;
 };
+
+template <typename T>
+concept HasBorderColor = requires(T& t, style::Color c) { t.border_color = c; };
 
 struct FlagModifier {
     Flag flag;
@@ -110,24 +114,8 @@ struct Container {
 
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         auto split = horizontal ? area.h_split(percent) : area.v_split(percent);
-        auto region_a = split[0];
-        auto region_b = split[1];
-
-        auto pos  = region_b.position();
-        auto size = region_b.size();
-        if(horizontal)
-            region_b = layout::Region{
-                {pos.x,      pos.y - 1      },
-                {size.width, size.height + 1}
-            };
-        else
-            region_b = layout::Region{
-                {pos.x - 1,      pos.y      },
-                {size.width + 1, size.height}
-            };
-
-        first->build(region_a, cmd);
-        second->build(region_b, cmd);
+        first->build(split[0], cmd);
+        second->build(split[1], cmd);
     }
 };
 

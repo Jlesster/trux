@@ -1,9 +1,11 @@
 #pragma once
 
+#include "trux/component/component_flags.hpp"
+#include "trux/layout/region.hpp"
+#include "trux/renderer/draw_command_buffer.hpp"
+#include "trux/style/color.hpp"
+
 #include <optional>
-#include <trux/component/component_flags.hpp>
-#include <trux/layout/region.hpp>
-#include <trux/renderer/draw_command_buffer.hpp>
 
 namespace trux::component {
 
@@ -134,7 +136,8 @@ inline std::optional<Flag> active_border(const ComponentFlags& flags) {
 
 inline void build_border(layout::Region               area,
                          Flag                         border,
-                         renderer::DrawCommandBuffer& cmd) {
+                         renderer::DrawCommandBuffer& cmd,
+                         style::Color color = {255, 255, 255, 255}) {
     auto [w, h] = area.size();
     if(w < 2 || h < 2) return;
 
@@ -143,7 +146,9 @@ inline void build_border(layout::Region               area,
     int  right  = pos.x + w - 1;
     int  bottom = pos.y + h - 1;
 
-    auto cell = [](char32_t c) { return renderer::Cell{.glyph = c}; };
+    auto cell = [&](char32_t c) {
+        return renderer::Cell{.glyph = c, .foreground = color};
+    };
 
     cmd.push(renderer::DrawCell{
         {pos.x, pos.y},

@@ -15,7 +15,10 @@ struct Label {
     ComponentFlags flags{};
 
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
-        cmd.push(renderer::DrawText{area.position(), text});
+        cmd.push(renderer::DrawText{
+            {area.position().x + 1, area.position().y},
+            text
+        });
     }
 };
 }  // namespace trux::component

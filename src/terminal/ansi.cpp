@@ -22,12 +22,12 @@ void trux::ansi::leave_alt_screen() {
 }
 
 void trux::ansi::enable_kitty_keyboard() {
-    std::print("\x1b[>1u");
+    std::print("\x1b[>3u");
     std::fflush(stdout);
 }
 
 void trux::ansi::disable_kitty_keyboard() {
-    std::print("\x1b[>u");
+    std::print("\x1b[<u");
     std::fflush(stdout);
 }
 

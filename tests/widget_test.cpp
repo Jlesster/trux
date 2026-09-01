@@ -178,8 +178,9 @@ void menu_scroll_follows_selection_test() {
 
 void dropdown_test() {
     renderer::Renderer       renderer({20, 5});
-    std::vector<std::string> options  = {"yes", "no", "maybe"};
-    auto                     dropdown = component::Dropdown(options);
+    std::vector<std::string> options       = {"yes", "no", "maybe"};
+    int                      scroll_offset = 0;
+    auto dropdown = component::Dropdown(options, scroll_offset);
 
     renderer.begin_draw();
     renderer.push(dropdown, layout::init({20, 5}));
@@ -191,8 +192,9 @@ void dropdown_test() {
 }
 
 void dropdown_default_state_test() {
-    std::vector<std::string> options = {"yes", "no"};
-    component::Dropdown      dropdown(options);
+    std::vector<std::string> options       = {"yes", "no"};
+    int                      scroll_offset = 0;
+    component::Dropdown      dropdown(options, scroll_offset);
     assert(dropdown.selected == 0);
     assert(dropdown.open == false);
 }

@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstdint>
 namespace trux::input {
 inline constexpr char32_t KeyBackSpace = 0x110000;
+
+enum class KeyState : uint8_t { Press, Repeat, Release };
+
 enum Key : char32_t {
     Escape = KeyBackSpace,
     Enter,

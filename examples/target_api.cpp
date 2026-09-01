@@ -1,4 +1,6 @@
+#include "trux/component/checkbox.hpp"
 #include "trux/component/component.hpp"
+#include "trux/input/modifiers.hpp"
 
 #include <trux/core.hpp>
 
@@ -24,9 +26,13 @@ int main() {
     // vector examples for lists
     std::vector<std::string> dir_names    = {"😀", "╭", "界"};
     std::vector<std::string> drop_options = {"yes", "no", "maybe"};
+    std::vector<std::string> flag_names   = {
+        "-Wall", "-Werror", "-lpthread", "-O3"};
+    std::vector<bool> flag_checked(flag_names.size(), false);
 
     // split vairables can be assigned either way
-    auto& split = root.h_split(20);
+    auto& split    = root.h_split(20);
+    auto& subsplit = split[1].v_split(50);
     // auto& [split1, split2] = root.h_split(20);
 
     // menu selection
@@ -37,10 +43,18 @@ int main() {
     int menu_offset1 = 0;
     int menu_offset2 = 0;
 
+    int checkbox_cursor = 0;
+    int checkbox_offset = 0;
+
     // creating widgets as variables and giving attribs
     auto widget2 = component::Menu(drop_options, menu_selection2, menu_offset2);
     auto widget1 = component::Menu(dir_names, menu_selection1, menu_offset1) |
                    component::BorderRounded;
+
+    auto widget3 =
+        component::Checkbox(
+            flag_names, flag_checked, checkbox_cursor, checkbox_offset) |
+        component::BorderRounded;
 
     bool                 dialog_open   = false;
     std::string          rename_value  = "main.cpp";
@@ -66,9 +80,9 @@ int main() {
         {
             // the equivalent of frame.render_widget
             renderer.push(widget1, split[0]);
-            renderer.push(widget2, split[1]);
-            if(dialog_open)
-                renderer.push(dialog, renderer.region(), /*modal=*/true);
+            renderer.push(widget2, subsplit[0]);
+            renderer.push(widget3, subsplit[1]);
+            if(dialog_open) renderer.push(dialog, renderer.region(), true);
             // OR
             // renderer.push(widget1, split1);
             // renderer.push(widget1, split2);
@@ -81,7 +95,9 @@ int main() {
         // easy and convenient input polling that
         // handles
         if(auto event = input.poll(terminal)) {
-            if(event.kind == input::EventKind::Quit) break;
+            // all input is handled by the namespace
+            using namespace trux::input;
+            if(event.kind == EventKind::Quit) break;
             switch(event) {
                 case 'q':
                     terminal.request_quit();

@@ -1,5 +1,6 @@
 #include "trux/renderer/cell.hpp"
 
+#include <algorithm>
 #include <cassert>
 #include <trux/renderer/cell_buffer.hpp>
 

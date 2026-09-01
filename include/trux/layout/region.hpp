@@ -6,14 +6,21 @@
 #include <cstddef>
 #include <memory>
 
+namespace trux::component {
+struct ComponentBase;
+}
+
 namespace trux::layout {
 
 enum class Orientation { Horizontal, Vertical };
+enum class Axis { Horizontal, Vertical };
 
 struct SplitKey {
-    Orientation    orientation;
-    bool           fixed;
-    int            value;
+    Orientation orientation;
+    bool        fixed;
+    int         value;
+    bool        shared = false;
+
     constexpr auto operator<=>(const SplitKey&) const = default;
 };
 
@@ -37,6 +44,11 @@ public:
     Split& v_split_fixed(int cells) const;
     [[nodiscard]]
     Split& h_split_fixed(int cells) const;
+
+    [[nodiscard]]
+    Split& v_split_shared(int percent) const;
+    [[nodiscard]]
+    Split& h_split_shared(int percent) const;
 
     [[nodiscard]]
     bool contains(Position pos) const noexcept;

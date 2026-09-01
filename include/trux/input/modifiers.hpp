@@ -43,4 +43,27 @@ constexpr Modifiers with(Mod m) noexcept {
     return mods;
 }
 
+[[nodiscard]]
+constexpr Modifiers operator|(Mod lhs, Mod rhs) noexcept {
+    Modifiers m = with(lhs);
+    m.add(rhs);
+    return m;
+}
+
+[[nodiscard]]
+constexpr Modifiers operator|(Modifiers lhs, Mod rhs) noexcept {
+    lhs.add(rhs);
+    return lhs;
+}
+
+[[nodiscard]]
+constexpr char32_t operator|(char32_t code, Mod mod) noexcept {
+    return code | (static_cast<char32_t>(with(mod).value) << 24);
+}
+
+[[nodiscard]]
+constexpr char32_t operator|(char32_t code, Modifiers mods) noexcept {
+    return code | (static_cast<char32_t>(mods.value) << 24);
+}
+
 }  // namespace trux::input

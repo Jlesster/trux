@@ -55,5 +55,7 @@ private:
     std::optional<Event> finish_sgr_mouse(char final_byte);
     [[nodiscard]]
     int param(std::size_t i, int fallback) const noexcept;
+    [[nodiscard]]
+    int param_sub(std::size_t i, int fallback) const noexcept;
 };
 }  // namespace trux::input

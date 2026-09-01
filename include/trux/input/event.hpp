@@ -16,18 +16,24 @@ struct Event {
     EventKind    kind{EventKind::Key};
     char32_t     code{};
     Modifiers    mods{};
+    KeyState     key_state{KeyState::Press};
     bool         valid{false};
+    bool         consumed{false};
     MouseEvent   mouse{};
     std::string  paste{};
     layout::Size resize{};
-    bool         consumed{false};
 
     constexpr explicit operator bool() const noexcept { return valid; }
-    constexpr          operator char32_t() const noexcept { return code; }
+    constexpr          operator char32_t() const noexcept {
+        return code | (static_cast<char32_t>(mods.value) << 24);
+    }
 
     [[nodiscard]]
-    static constexpr Event key(char32_t code, Modifiers mods = {}) noexcept {
-        return Event{.code = code, .mods = mods, .valid = true};
+    static constexpr Event key(char32_t  code,
+                               Modifiers mods  = {},
+                               KeyState  state = KeyState::Press) noexcept {
+        return Event{
+            .code = code, .mods = mods, .key_state = state, .valid = true};
     }
     [[nodiscard]]
     static constexpr Event from_mouse(MouseEvent m) noexcept {

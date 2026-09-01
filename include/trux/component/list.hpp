@@ -4,6 +4,7 @@
 #include "trux/component/component_flags.hpp"
 #include "trux/renderer/draw_command.hpp"
 #include "trux/renderer/draw_command_buffer.hpp"
+#include "trux/style/color.hpp"
 
 #include <algorithm>
 #include <string>
@@ -17,13 +18,14 @@ struct List {
     std::vector<std::string>& items;
 
     ComponentFlags flags{};
+    style::Color   border_color{255, 255, 255, 255};
     int&           scroll_offset;
 
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         auto content = area;
 
         if(auto border = active_border(flags)) {
-            build_border(area, *border, cmd);
+            build_border(area, *border, cmd, border_color);
             content = inset(area);
         }
 

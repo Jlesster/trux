@@ -31,6 +31,11 @@ int input::EventParser::param(std::size_t i, int fallback) const noexcept {
     return m_params[i].value;
 }
 
+int input::EventParser::param_sub(std::size_t i, int fallback) const noexcept {
+    if(i >= m_params.size() || m_params[i].sub < 0) return fallback;
+    return m_params[i].sub;
+}
+
 std::optional<input::Event> input::EventParser::parse(char byte) {
     switch(m_state) {
         case State::Normal: {
@@ -39,7 +44,7 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
                 return std::nullopt;
             }
 
-            if(byte == '\n') { return Event::key(Key::Enter); }
+            if(byte == '\n' || byte == '\r') { return Event::key(Key::Enter); }
             if(byte == '\t') { return Event::key(Key::Tab); }
             if(byte == '\x7f') { return Event::key(Key::Backspace); }
             if(byte == '\x17') {
@@ -47,6 +52,10 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
             }
             if(byte >= 32 && byte <= 126) {
                 return Event::key(static_cast<char32_t>(byte));
+            }
+            if(byte >= 1 && byte <= 26) {
+                char32_t letter = static_cast<char32_t>('a' + (byte - 1));
+                return Event::key(letter, input::with(Mod::Ctrl));
             }
 
             unsigned char b0 = static_cast<unsigned char>(byte);
@@ -97,6 +106,10 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
             if(byte == 'O') {
                 m_state = State::SS3;
                 return std::nullopt;
+            }
+            if(byte >= 32 && byte <= 126) {
+                return Event::key(static_cast<char32_t>(byte),
+                                  input::with(Mod::Alt));
             }
 
             m_reprocess = byte;
@@ -187,7 +200,17 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
 }
 
 std::optional<input::Event> input::EventParser::finish_csi(char final_byte) {
-    Modifiers mods = decode_modifier_param(param(1, 1));
+    Modifiers mods      = decode_modifier_param(param(1, 1));
+    KeyState  key_state = [&] {
+        switch(param_sub(1, 1)) {
+            case 3:
+                return KeyState::Release;
+            case 2:
+                return KeyState::Repeat;
+            default:
+                return KeyState::Press;
+        }
+    }();
 
     auto with_mods = [&](char32_t code) { return Event::key(code, mods); };
 
@@ -209,6 +232,9 @@ std::optional<input::Event> input::EventParser::finish_csi(char final_byte) {
             break;
         case 'F':
             return with_mods(Key::End);
+            break;
+        case 'Z':
+            return Event::key(Key::Tab, input::with(Mod::Shift));
             break;
 
         case '~': {

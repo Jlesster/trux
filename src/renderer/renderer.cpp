@@ -16,10 +16,12 @@ using namespace trux;
 renderer::Renderer::Renderer(layout::Size size) : m_size(size) {
     m_front.resize(size);
     m_back.resize(size);
+    m_owner.assign(static_cast<size_t>(size.width) * size.height, false);
 }
 
 void renderer::Renderer::begin_draw() {
     m_back.clear();
+    std::fill(m_owner.begin(), m_owner.end(), false);
     m_commands.clear();
     m_handlers.clear();
     m_focus.begin_frame();
@@ -42,6 +44,7 @@ void renderer::Renderer::resize(layout::Size size) {
     m_front.resize(size);
     m_front.invalidate();
     m_back.resize(size);
+    m_owner.assign(static_cast<size_t>(size.width) * size.height, false);
 }
 void renderer::Renderer::resize(layout::Region& root) {
     layout::propagate_resize(root, m_size);
@@ -98,25 +101,35 @@ void renderer::Renderer::put(layout::Position pos, Cell cell) {
 
     if(cell.glyph != U' ') dst.glyph = cell.glyph;
     dst.style = cell.style;
+
+    m_owner[static_cast<size_t>(pos.y) * m_size.width + pos.x] =
+        m_current_modal;
 }
 
 void renderer::Renderer::put(layout::Position pos, char32_t c) {
     put(pos, Cell{.glyph = c});
 }
 
+void renderer::Renderer::put_opaque(layout::Position pos, Cell cell) {
+    if(m_clip && !m_clip->contains(pos)) return;
+    if(!m_back.contains(pos)) return;
+
+    m_back.at(pos) = cell;
+    m_owner[static_cast<size_t>(pos.y) * m_size.width + pos.x] =
+        m_current_modal;
+}
+
 void renderer::Renderer::push(component::ComponentBase& component,
                               layout::Region            area,
                               bool                      modal) {
-    m_commands.push(SetClip{area});
-    component.build(area, m_commands);
-    m_commands.push(ClearClip{});
-
     auto id = static_cast<focus::FocusID>(&component);
-    if(!modal) m_focus.register_focusable(id);
-    m_handlers.push_back(
-        Handler{id, area, modal, [&component](const input::Event& e) {
-                    return component.handle(e);
-                }});
+    push_generic(
+        id,
+        area,
+        modal,
+        true,
+        [&] { component.build(area, m_commands); },
+        [&component](const input::Event& e) { return component.handle(e); });
 }
 
 void renderer::Renderer::text(layout::Region   region,
@@ -191,12 +204,14 @@ void renderer::Renderer::resolve() {
                     auto [w, h] = cmd.region.size();
                     for(int row = 0; row < h; row++) {
                         for(int col = 0; col < w; col++) {
-                            put({x + col, y + row}, cmd.cell);
+                            put_opaque({x + col, y + row}, cmd.cell);
                         }
                     }
                 } else if constexpr(std::is_same_v<T, SetClip>) {
+                    m_current_modal = cmd.modal;
                     set_clip(cmd.region);
                 } else if constexpr(std::is_same_v<T, ClearClip>) {
+                    m_current_modal = false;
                     clear_clip();
                 }
             },
@@ -222,7 +237,7 @@ void renderer::Renderer::coalesce_borders() {
                 component::classify_border_glyph(m_back.at({x, y}).glyph);
 
     for(int y = 0; y < size.height; y++) {
-        for(int x = 0; x < size.height; x++) {
+        for(int x = 0; x < size.width; x++) {
             auto& self = classified[idx(x, y)];
             if(!self.is_border) continue;
 
@@ -233,7 +248,9 @@ void renderer::Renderer::coalesce_borders() {
                        ny >= size.height)
                         return;
                     auto& n = classified[idx(nx, ny)];
-                    if(n.is_border && (n.mask & back)) merged |= toward;
+                    if(n.is_border && (n.mask & back) &&
+                       m_owner[idx(nx, ny)] == m_owner[idx(x, y)])
+                        merged |= toward;
                 };
             try_connect(x, y - 1, component::North, component::South);
             try_connect(x, y + 1, component::South, component::North);

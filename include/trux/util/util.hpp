@@ -113,7 +113,7 @@ inline int next_boundary(std::string_view s, int cursor) noexcept {
 inline int prev_word_boundary(std::string_view s, int cursor) noexcept {
     int i = cursor;
     while(i > 0) {
-        int  p = prev_boundary(s, 1);
+        int  p = prev_boundary(s, i);
         auto d = decode_utf8(s.substr(static_cast<size_t>(p)));
         if(!d || is_word_char(d->first)) break;
         i = p;

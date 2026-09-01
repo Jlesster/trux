@@ -29,6 +29,7 @@ struct Fill {
 
 struct SetClip {
     layout::Region region;
+    bool           modal{false};
 };
 
 struct ClearClip {};

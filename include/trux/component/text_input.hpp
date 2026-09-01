@@ -23,13 +23,14 @@ struct TextInput {
 
     ComponentFlags flags{};
     style::Style   cursor_style{style::Style::Reverse};
+    style::Color   border_color{255, 255, 255, 255};
 
     mutable int m_view_start{0};
 
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         auto content = area;
         if(auto border = active_border(flags)) {
-            build_border(area, *border, cmd);
+            build_border(area, *border, cmd, border_color);
             content = inset(area);
         }
 
@@ -105,9 +106,9 @@ struct TextInput {
             } else {
                 int  glyph_len = util::next_boundary(after, 0);
                 auto decoded   = util::decode_utf8(after);
-                int  gw        = decoded
-                                     ? std::max(1, util::glyph_width(decoded->first))
-                                     : 1;
+                int  gw = decoded
+                              ? std::max(1, util::glyph_width(decoded->first))
+                              : 1;
 
                 cmd.push(renderer::DrawText{
                     cursor_pos, after.substr(0, glyph_len), cursor_style});

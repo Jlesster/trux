@@ -40,9 +40,7 @@ layout::Position layout::Region::absolute(Position local) const noexcept {
 
 layout::Split& layout::Region::v_split(int percent) const {
     percent = std::clamp(percent, 0, 100);
-
     SplitKey key{Orientation::Vertical, false, percent};
-
     if(auto it = m_node->children.find(key); it != m_node->children.end())
         return *it->second;
 
@@ -105,7 +103,7 @@ layout::Split& layout::Region::v_split_fixed(int cells) const {
 }
 
 layout::Split& layout::Region::h_split_fixed(int cells) const {
-    cells = std::clamp(cells, 0, size().width);
+    cells = std::clamp(cells, 0, size().height);
     SplitKey key{Orientation::Horizontal, true, cells};
 
     if(auto it = m_node->children.find(key); it != m_node->children.end())
@@ -117,6 +115,46 @@ layout::Split& layout::Region::h_split_fixed(int cells) const {
     auto second = Region{
         {m_node->rect.position.x, m_node->rect.position.y + cells },
         {m_node->rect.size.width, m_node->rect.size.height - cells}
+    };
+
+    auto [it, _] = m_node->children.emplace(
+        key, std::make_shared<Split>(Split{first, second}));
+    return *it->second;
+}
+
+layout::Split& layout::Region::v_split_shared(int percent) const {
+    percent = std::clamp(percent, 0, 100);
+    SplitKey key{Orientation::Vertical, false, percent, true};
+    if(auto it = m_node->children.find(key); it != m_node->children.end())
+        return *it->second;
+
+    int  first_width = m_node->rect.size.width * percent / 100;
+    auto first       = Region{
+        m_node->rect.position, {first_width, m_node->rect.size.height}
+    };
+    auto second = Region{
+        {m_node->rect.position.x + first_width - 1, m_node->rect.position.y },
+        {m_node->rect.size.width - first_width + 1, m_node->rect.size.height}
+    };
+
+    auto [it, _] = m_node->children.emplace(
+        key, std::make_shared<Split>(Split{first, second}));
+    return *it->second;
+}
+
+layout::Split& layout::Region::h_split_shared(int percent) const {
+    percent = std::clamp(percent, 0, 100);
+    SplitKey key{Orientation::Horizontal, false, percent, true};
+    if(auto it = m_node->children.find(key); it != m_node->children.end())
+        return *it->second;
+
+    int  first_height = m_node->rect.size.height * percent / 100;
+    auto first        = Region{
+        m_node->rect.position, {m_node->rect.size.width, first_height}
+    };
+    auto second = Region{
+        {m_node->rect.position.x, m_node->rect.position.y + first_height - 1 },
+        {m_node->rect.size.width, m_node->rect.size.height - first_height + 1}
     };
 
     auto [it, _] = m_node->children.emplace(
@@ -138,22 +176,27 @@ void layout::propagate_resize(layout::Region& region, layout::Size new_size) {
                                     : (key.orientation == Orientation::Vertical
                                            ? parent_rect.size.width * key.value / 100
                                            : parent_rect.size.height * key.value / 100);
+            int   overlap     = key.shared ? 1 : 0;
 
             if(key.orientation == Orientation::Vertical) {
                 split->first.m_node->rect = {
                     parent_rect.position, {value, parent_rect.size.height}
                 };
                 split->second.m_node->rect = {
-                    {parent_rect.position.x + value, parent_rect.position.y },
-                    {parent_rect.size.width - value, parent_rect.size.height}
+                    {parent_rect.position.x + value - overlap,
+                     parent_rect.position.y },
+                    {parent_rect.size.width - value + overlap,
+                     parent_rect.size.height}
                 };
             } else {
                 split->first.m_node->rect = {
                     parent_rect.position, {parent_rect.size.width, value}
                 };
                 split->second.m_node->rect = {
-                    {parent_rect.position.x, parent_rect.position.y + value },
-                    {parent_rect.size.width, parent_rect.size.height - value}
+                    {parent_rect.position.x,
+                     parent_rect.position.y + value - overlap },
+                    {parent_rect.size.width,
+                     parent_rect.size.height - value + overlap}
                 };
             }
             resize_children(*split->first.m_node);
