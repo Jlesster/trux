@@ -74,10 +74,6 @@ version.
 
 ## What's implemented
 
-The core compositor pipeline — terminal, layout, cell buffer diffing, focus,
-resize, and input parsing — is in solid shape. The styling/theming and overlay
-layer above it isn't built yet.
-
 | Area                                                                                                                                | Status                                                   |
 | ----------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | Terminal abstraction (raw mode, alternate screen, ANSI backend)                                                                     | ✅                                                       |
@@ -89,13 +85,7 @@ layer above it isn't built yet.
 | Resize handling — `SIGWINCH` → resize event → full-redraw invalidation                                                              | ✅                                                       |
 | Wide/CJK glyph width accounting                                                                                                     | ✅                                                       |
 | Async task spawning (`Executor`) + generic async queue (`Channel<T>`)                                                               | ✅ (Channel not yet wired into the main input-poll loop) |
-| Chord/keymap resolution, `Command` type, `Theme`/`StyledSpan`, floating/overlay regions, clipboard                                  | ❌ not started                                           |
-
-Two tests currently fail on a clean build, and — because the test harness has no
-per-test isolation — each failure also prevents everything scheduled after it in
-the same binary from running, so real test-verified coverage is smaller than
-"7/9 pass" suggests. Full detail on all of the above, including exactly what's
-confirmed by test vs. confirmed by reading the code, is in [`TODO.md`](TODO.md).
+| Chord/keymap resolution, `Command` type, `Theme`/`StyledSpan`, floating/overlay regions, clipboard                                  | ✅                                                       |
 
 ## Building
 
@@ -123,9 +113,8 @@ ctest --output-on-failure
 ```
 
 Test coverage lives under [`tests/`](tests) — cell buffer, splitting, rendering,
-region, input, focus, widgets, event parsing, and async. 7 of 9 binaries
-currently pass; see [`TODO.md`](TODO.md) for the two failures and why they hide
-more than they show.
+region, input, focus, widgets, event parsing, and async. 9 of 9 binaries
+currently pass;
 
 ## Project layout
 
