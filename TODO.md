@@ -1,192 +1,264 @@
 # trux — TODO / Roadmap
 
-Target: full-bodied backend framework for a TUI IDE (IntelliJ × nvim hybrid).
-Priority order reflects what everything else routes through — fix input/focus
-before building widgets on top of them.
+Target: a general-purpose terminal composition and rendering engine — terminal
+handling, layout, focus/input routing, and rendering primitives that any
+terminal application can be built on top of. Priority order reflects what
+everything else routes through — fix input/focus before building more on top of
+them.
 
 Legend: `[ ]` not started · `[~]` partial/exists but insufficient · `[x]` done
 
 ---
 
-## 0. Stubs to create
+## Status check
 
-Nothing in the tree is stubbed yet — these are net-new files/interfaces that
-should exist as skeletons (even if empty/throwing `not implemented`) so the
-shape of the framework is visible before each piece is filled in.
+The core pipeline is more complete than this file used to reflect, in both
+directions — some things marked done weren't fully wired, and several things
+marked unstarted (resize/SIGWINCH, wide-glyph width, parts of the async story)
+already work. Two things currently block calling this stable:
 
-- [x] `include/trux/input/mouse.hpp` — currently an empty file; needs a real
-      `MouseEvent` struct (position, button, kind: press/release/drag/scroll,
-      modifiers) and a parse entry point mirrored off `EventParser`.
-- [~] `include/trux/input/modifiers.hpp` — `Modifiers` bitflag (Ctrl/Alt/Shift/Super)
-      to attach to `Event`, currently nonexistent — `Event` only carries `code`.
-- [ ] `include/trux/input/keymap.hpp` — chord/sequence resolver interface
-      (`feed(Event) -> optional<Command>`), sits between `EventParser` and
-      component `handle()`.
-- [ ] `include/trux/command/command.hpp` — `Command` type (id + payload) that
-      keymaps resolve to and components/app logic consume instead of raw `Event`.
-- [ ] `include/trux/focus/focus_manager.hpp` — owns the focused component
-      path/id, exposes `focus(id)`, `focused() const`, tab-order traversal.
-- [ ] `include/trux/component/text_area.hpp` — the actual editor buffer
-      component; currently no editable multi-line widget exists at all.
-- [ ] `include/trux/component/floating.hpp` — popup/overlay wrapper
-      (z-ordered region outside the split tree) for autocomplete, hover,
-      command palette.
-- [ ] `include/trux/style/span.hpp` — `StyledSpan{ start, end, style, fg, bg }`
-      so a single `DrawText` can carry mixed styling for syntax highlighting.
-- [ ] `include/trux/style/theme.hpp` — palette/theme abstraction; currently
-      colors are hardcoded per-`Cell`/`DrawText` construction site.
-- [ ] `include/trux/terminal/capabilities.hpp` — truecolor / kitty-keyboard /
-      bracketed-paste detection results, queried once at `Terminal::init()`.
-- [ ] `include/trux/loop/event_loop.hpp` — multi-fd poll/epoll loop
-      abstraction; `Input::poll(Terminal&)` currently only reads stdin
-      synchronously in a blocking loop.
-- [ ] `include/trux/clipboard/clipboard.hpp` — OSC 52 read/write wrapper.
-- [ ] `tests/` — no test directory exists yet; needs headless `CellBuffer`
-      snapshot testing before the diff/resolve pipeline gets more complex.
+1. **Two failing tests, and both hide most of their own test binary.** Neither
+   `test::run` nor the individual tests catch anything — a failed `assert()`
+   calls `abort()` mid-process, so every test scheduled _after_ the failing one
+   in that binary's `main()` never runs at all. Concretely: `widget_test` fails
+   on its 1st test, so its other 12 never execute; `event_parser_test` fails on
+   its 3rd, so its other 16 (including all the mouse and bracketed-paste tests)
+   never execute either. "7/9 test binaries pass" is true but overstates how
+   much is actually test-verified right now — most of the suite doesn't run.
+2. **Section 0's stub list is still mostly empty on disk.** No `Keymap`, no
+   `Command` type, no `Floating`, no `StyledSpan`/`Theme`, no capability
+   negotiation, no clipboard, and `Input::poll`'s multi-fd support is half-wired
+   (see §4).
+
+## Known test failures (fix before relying on this suite)
+
+Confirmed on a clean build (GCC 14, `-std=gnu++23`): 7/9 test binaries pass, but
+see the note above about what that number doesn't tell you.
+
+- [ ] **`widget_test` — `label_test` aborts, and everything after it in that
+      binary never runs.** `assert(back_buffer().at({0,     0}).glyph == U'H')`
+      fails. `component::Label::build()` writes the first glyph at
+      `area.position().x + 1`, one cell right of the component's own origin.
+      Checked every other component for the same pattern — nothing else has it.
+      `TextInput`'s similar-looking `pos.x     + 1` is intentional (it's
+      reserving column 0 for a cursor block), so this really does look isolated
+      to `Label`.
+- [ ] **`event_parser_test` — `test_standalone_escape_and_reprocess` aborts, and
+      16 later tests in that binary never run (including all mouse and
+      bracketed-paste tests).** This one isn't a straightforward bug — it's two
+      incompatible models colliding. `State::Escape` currently treats `ESC`
+      immediately followed by a printable byte (32–126) as `Alt+<that key>`,
+      which is how a lot of terminals encode Alt combinations, and is presumably
+      deliberate — `resolve_pending()` already handles the _true_ "bare ESC,
+      nothing followed" case correctly via a timeout path. The test instead
+      asserts that `ESC` immediately followed by _any_ non-`[` byte — including
+      an ordinary printable one — should resolve to a standalone `Key::Escape`
+      and queue that byte for reprocessing. Only one of these can be the
+      intended behavior for a printable byte after `ESC`; worth deciding which,
+      since fixing this by making the test pass would silently remove Alt-key
+      decoding.
+- [ ] **Test harness swallows output and hides everything past the first
+      failure.** `test::run` (`tests/test.hpp`) just calls `fn()` directly — no
+      try/catch, no per-test isolation. Worth having it catch exceptions and/or
+      moving to per-test processes (or at least a signal handler that reports
+      which test aborted and continues) before trusting aggregate pass counts on
+      a growing suite.
+
+Building requires **GCC 14+** — confirmed by testing directly; GCC 13's
+libstdc++ is missing `<print>` and `<expected>`, so `ansi.cpp` and
+`terminal.cpp` fail to compile on it (e.g. stock Ubuntu 24.04's default
+compiler). Note that `CMakeUserPresets.json` in this repo actually points at
+`clang++` — that toolchain wasn't available to verify here, so the Clang version
+actually needed to build this is currently unconfirmed; worth pinning down and
+stating explicitly once known.
 
 ---
 
-## 1. Focus & input routing (blocking everything else)
+## 0. Stubs to create
 
-- [x] Add `FocusManager` owning current focused component id/path.
-- [~] `Renderer::push` should register handlers under a scope/id, not just
-      append to a flat `m_handlers` vector.
-- [ ] `Renderer::dispatch` should route to the focused scope first, with an
-      optional secondary "global" tier for app-wide bindings (Ctrl+P, etc.)
-      instead of last-registered-first-to-return-true across everyone.
-- [ ] Tab/Shift-Tab (or explicit `focus_next()`/`focus_prev()`) traversal
-      order across visible components.
-- [ ] Decide whether `Container` needs focus-awareness (e.g. clicking a pane
-      should focus it) — ties into mouse work below.
-- [ ] Un-swallow-consumed-events bug (`Input::next_unconsumed`) — fixed in
-      this session, keep the regression covered by a test once `tests/` exists.
+- [x] `include/trux/input/mouse.hpp` — `MouseEvent` (position, button, kind,
+      modifiers) exists and is parsed (see §9). Note: the tests that would
+      confirm the parsing currently never run — see above.
+- [x] `include/trux/input/modifiers.hpp` — `Modifiers` bitflag (Ctrl/Alt/
+      Shift/Super) exists, attached to `Event`.
+- [ ] `include/trux/input/keymap.hpp` — chord/sequence resolver interface
+      (`feed(Event) -> Result`), sits between `EventParser` and component
+      `handle()`.
+- [ ] `include/trux/command/command.hpp` — a `Command` type (id + payload) that
+      keymaps resolve to and app logic consumes instead of raw `Event`.
+- [x] `include/trux/focus/focus_manager.hpp` — owns focused id, tab-order
+      traversal (`focus_next`/`focus_prev`), wired into `Renderer::dispatch`.
+- [ ] `include/trux/component/floating.hpp` — popup/overlay wrapper (z-ordered
+      region outside the split tree).
+- [ ] `include/trux/style/span.hpp` —
+      `StyledSpan{ start, end, style, fg,     bg }` so a single `DrawText` can
+      carry mixed styling within one string.
+- [ ] `include/trux/style/theme.hpp` — palette/theme abstraction; colors are
+      still hardcoded per-`Cell`/`DrawText` construction site.
+- [ ] `include/trux/terminal/capabilities.hpp` — truecolor / kitty-keyboard /
+      bracketed-paste detection, queried once at `Terminal::init()`. (Terminal
+      already _emits_ the enabling sequences for several of these — see §12 — it
+      just never asks what's actually supported.)
+- [~] `include/trux/loop/event_loop.hpp` — doesn't exist as its own file, but
+  the pieces are mostly there and just not fully connected: see §4.
+- [ ] `include/trux/clipboard/clipboard.hpp` — OSC 52 read/write wrapper.
+- [x] `tests/` — exists, 9 test binaries across cell buffer, splitting,
+      rendering, region, input, focus, widgets, event parsing, and async. 2
+      currently abort partway through — see above.
+
+---
+
+## 1. Focus & input routing
+
+- [x] `FocusManager` owning current focused component id/path.
+- [x] `Renderer::push` registers handlers under a scope/id
+      (`Handler{id,     region, modal, fn}`), not a flat unscoped vector.
+- [ ] `Renderer::dispatch` has a `modal` tier and a `focused` tier, but no third
+      "global" tier for app-wide bindings that should fire regardless of what's
+      focused — right now an unfocused/no-match event just returns `false`.
+- [x] Tab/Shift-Tab traversal (`focus_next()`/`focus_prev()`) across visible
+      components — implemented and wired into `dispatch`.
+- [x] Mouse click focuses the component under the cursor (`dispatch`'s
+      `MouseKind::Press` branch calls `m_focus.focus(it->id)`).
+- [ ] The previously-mentioned swallowed-event regression in
+      `Input::next_unconsumed` has no dedicated test — `input_test.cpp` only
+      covers basic `Event`/queue construction, not dispatch/consume behavior.
+      Don't assume it's still fixed without one.
 
 ## 2. Keymap / chord resolution
 
-- [ ] `Keymap` type: accumulates `Event`s into sequences (`dd`, `gg`),
-      handles numeric counts (`3j`), and resolves to `Command`.
-- [ ] Mode concept (Normal/Insert/Visual/Command-line at minimum) that
-      changes which keymap is active — modal editing needs this before
-      `TextArea` bindings make sense.
-- [ ] Timeout handling for ambiguous prefixes (e.g. `g` waiting to see if
-      `gg` follows) — needs a clock/timer, ties into the event loop work.
-- [ ] Rebindable/user-configurable keymap loading (even if just a C++ builder
-      API to start, no config file format required yet).
+- [ ] `Keymap` type: accumulates `Event`s into sequences, handles numeric
+      counts, resolves to a `Command`.
+- [ ] Mode concept (at least two modes with different active bindings) — needed
+      before multi-key chorded bindings are worth much.
+- [ ] Timeout handling for ambiguous prefixes (a key that could be the start of
+      a longer chord, waiting to see what follows) — needs a clock/timer, ties
+      into the event loop work below (currently zero `<chrono>`/`timerfd` usage
+      anywhere in the codebase).
+- [ ] Rebindable/user-configurable keymap loading (a C++ builder API is fine to
+      start; no config file format required yet).
 - [ ] Migrate `Menu::handle` and future widgets off raw `switch(event.code)`
-      once `Command` exists, so components consume resolved commands, not
-      bytes.
+      once `Command` exists.
 
 ## 3. Terminal input protocol coverage
 
-- [x] Modifier keys — CSI-u / Kitty keyboard protocol parsing so Ctrl/Alt/Shift
-      combos are distinguishable (currently only 4 bare arrow keys via
-      `CSI A-D`, no modifiers at all).
+- [x] Modifier keys — CSI-u / Kitty keyboard protocol parsing.
 - [x] Function keys, Home/End/PageUp/PageDown/Delete/Insert.
-- [ ] Bracketed paste mode (`CSI 200~` / `201~`) — without this, pasting text
-      gets character-by-character fed through the keymap resolver.
-- [ ] Query + fall back gracefully when the terminal doesn't support the
-      Kitty protocol (most don't) — needs `capabilities.hpp` above.
-- [ ] Focus-in/focus-out terminal events (`CSI I` / `CSI O`), useful for
-      pausing cursor blink / autosave-on-blur later.
+- [x] Bracketed paste mode (`CSI 200~` / `201~`) — parsed in
+      `EventParser::State::Paste`, resolves to `Event::from_paste`. (Its tests
+      exist but currently don't run — see "Known test failures.")
+- [ ] Query + fall back gracefully when the terminal doesn't support the Kitty
+      protocol (most don't) — needs `capabilities.hpp` above.
+- [ ] Focus-in/focus-out terminal events (`CSI I` / `CSI O`) — no trace of these
+      anywhere in the parser.
 
-## 4. Async event loop
+## 4. Async / event loop
 
-- [ ] Replace blocking `::read(STDIN_FILENO, ...)` single-fd loop with
-      `poll`/`epoll` over multiple fds.
-- [ ] Support for registering additional fds (LSP server pipe/socket, file
-      watcher fd) alongside stdin.
-- [ ] Timer support (debounced diagnostics, chord-prefix timeout above,
-      cursor blink).
-- [ ] Decide sync-callback vs. some lightweight task/future model for
-      LSP responses arriving async mid-frame.
+More already works here than the previous version of this file gave credit for,
+but there's one real, specific gap:
 
-## 5. SIGWINCH / resize
+- [x] `Terminal::wait_readable(primary_fd, extra_fds, timeout_ms)` — a real
+      `::poll()` over an arbitrary set of fds, correctly reports which one was
+      ready via `last_ready_fd()`.
+- [x] `async::Executor` — spawns work on a background `std::jthread`, delivers
+      completion callbacks back on the main thread via an `eventfd`, drained by
+      `run_pending()`. 4 passing tests.
+- [x] `async::Channel<T>` — generic `eventfd`-backed producer/consumer queue,
+      independent of `Executor`. Exists, but has no tests of its own, and:
+- [ ] **`Input::poll(Terminal&, extra_fds)` silently ignores the `extra_fds`
+      parameter it takes.** The body only ever builds `wait_readable`'s fd set
+      from `async::Executor::instance().fd()` — an app-registered fd (e.g. a
+      `Channel` backing some other async source) passed into `poll()` is never
+      actually included in the `poll()` call, so it can't wake the loop even
+      though `wait_readable` itself fully supports it. This is a one-line-ish
+      wiring fix, not a missing subsystem — but worth a test once fixed, since
+      nothing currently would catch a regression here.
+- [ ] Timer support (debounced work, chord-prefix timeout above) — no `timerfd`
+      or `<chrono>` deadline anywhere yet.
 
-- [ ] Register `SIGWINCH` handler alongside existing `SIGINT`/`SIGTERM`.
-- [ ] Wire resize signal through to `Renderer::resize()` + force full
-      redraw (`front`/`back` buffers need re-sizing and re-diffing from
-      scratch after a resize).
-- [ ] Re-query `Terminal::size()` on resize rather than only at startup.
+## 5. Resize handling
 
-## 6. Text editing primitive (`TextArea`)
+Already fully wired, contrary to what this file previously said:
 
-- [ ] Buffer representation — pick gap buffer / rope / piece table (matters
-      for large-file performance, worth deciding before writing code).
-- [ ] Cursor as line/col, not flat index; multi-cursor is a stretch goal,
-      don't block on it.
-- [ ] Insert/delete/undo-redo stack.
-- [ ] Selection ranges (char-wise, line-wise, block-wise for later Vim
-      visual-block parity).
-- [ ] Vertical scroll (existing `scroll_offset` pattern from `Menu`/`List`
-      is reusable) **and** horizontal scroll for long lines — nothing in
-      the framework currently scrolls on the x-axis.
-- [ ] Line wrapping (optional/toggleable) vs. fixed horizontal scroll.
-- [ ] Line-number gutter rendering.
-- [ ] Render via `StyledSpan`s instead of one `DrawText` per full line, so
-      syntax highlighting doesn't require manual token-splitting into many
-      `DrawText` pushes at the call site.
+- [x] `SIGWINCH` handler installed (alongside `SIGINT`/`SIGTERM`), sets an
+      async-signal-safe atomic flag.
+- [x] `Input::poll` checks `terminal.resized()` each loop iteration and pushes a
+      `Resize` event carrying a freshly re-queried `terminal.size()` — not just
+      the size from startup.
+- [x] `Renderer::dispatch` routes `Resize` events to `Renderer::resize()`, which
+      resizes both cell buffers and calls `m_front.invalidate()`, forcing every
+      cell to re-diff as changed on the next frame (i.e. a full redraw). No
+      dedicated test for this path yet, but by reading the code end-to-end this
+      looks correctly connected.
 
-## 7. Styling / theming
+## 6. Styling / theming
 
-- [ ] `StyledSpan` type + `DrawCommand` variant (or extend `DrawText`) to
-      carry mixed styling within one string.
-- [ ] `Theme`/palette abstraction — named colors (`editor.bg`, `syntax.keyword`,
-      etc.) resolved through a theme instead of literal `Color{r,g,b}` at
-      each call site.
-- [ ] 256-color / no-color fallback path for terminals without truecolor —
-      `sgr_codes` in `terminal.cpp` currently always emits `38;2;r;g;b` truecolor
-      codes unconditionally.
+- [ ] `StyledSpan` type + `DrawCommand` variant (or extend `DrawText`) for mixed
+      styling within one string.
+- [ ] `Theme`/palette abstraction — named colors resolved through a theme
+      instead of literal `Color{r,g,b}` at each call site.
+- [ ] 256-color / no-color fallback path — `util::sgr_codes` always emits
+      `38;2;r;g;b` truecolor codes unconditionally, confirmed by reading it
+      directly; no conditional path exists.
 
-## 8. Layered / floating regions
+## 7. Layered / floating regions
 
-- [ ] `Floating` component or renderer-level overlay stack, drawn after the
-      main split tree, for autocomplete popups, hover/diagnostic boxes,
-      command palette.
+- [ ] `Floating` component or renderer-level overlay stack, drawn after the main
+      split tree.
 - [ ] Z-order + dismiss-on-focus-loss / dismiss-on-outside-click semantics.
-- [ ] Damage/diff still needs to work correctly when overlays cover part of
-      an already-drawn region (currently `resolve()` just draws in command
-      order, which should already handle this, but needs explicit testing
-      once floats exist).
+- [ ] Damage/diff correctness when overlays cover part of an already-drawn
+      region — needs an explicit test once floats exist.
 
-## 9. Mouse
+## 8. Mouse
 
-- [ ] SGR mouse mode parsing (`CSI ?1006h` enable, `CSI < b;x;yM/m` events).
-- [ ] Click-to-position (route through focus manager — clicking a pane
-      focuses it).
-- [ ] Drag-select (ties into `TextArea` selection).
-- [ ] Scroll wheel → scroll_offset adjustment on the component under the
-      cursor.
+- [x] SGR mouse mode parsing (`CSI ?1006h` enable, `CSI < b;x;yM/m` events) —
+      `finish_sgr_mouse` in `event_parser.cpp` decodes button, kind
+      (press/release/drag/scroll), and position. (Tests exist but currently
+      don't run — see "Known test failures.")
+- [x] Click-to-focus — routed through `FocusManager` in `dispatch`.
+- [ ] Drag-select — no selection concept exists anywhere yet to drag over.
+- [ ] Scroll wheel → `scroll_offset` adjustment on the component under the
+      cursor — events parse correctly (confirmed by reading `finish_sgr_mouse`)
+      but nothing anywhere consumes `MouseKind::ScrollUp`/`ScrollDown` to
+      actually move a `scroll_offset`.
 
-## 10. Wide/CJK glyph handling
+## 9. Wide/CJK glyph handling
 
-- [ ] `wcwidth`-equivalent lookup so double-width glyphs (CJK, some emoji)
-      correctly occupy two `Cell` columns instead of one — `resolve()`'s
-      `DrawText` loop currently advances `pos.x` by exactly one per decoded
-      codepoint regardless of display width.
-- [ ] Combining character handling (zero-width) — lower priority than the
-      double-width case.
+Already done, contrary to what this file previously said:
 
-## 11. Clipboard
+- [x] `util::glyph_width()` is a real wcwidth-equivalent: returns 0 for
+      combining-mark ranges, 2 for CJK/Hangul/emoji ranges, 1 otherwise. It's
+      actually used — in the `resolve()` `DrawText` loop, in the front/back
+      diff's `running_x` accounting, and in `TextInput`'s column-width math. Not
+      a stub, not unused.
+- [ ] Nothing currently exercises it in a test — worth a `glyph_width` unit test
+      and a render test with an actual wide glyph, given how easy this class of
+      thing is to silently regress.
+
+## 10. Clipboard
 
 - [ ] OSC 52 write (copy from buffer → host clipboard).
-- [ ] OSC 52 read where terminal supports it (most require explicit
-      opt-in from the user's terminal config — document this limitation).
+- [ ] OSC 52 read where terminal supports it (document the opt-in limitation
+      most terminals impose).
 
-## 12. Terminal capability negotiation
+## 11. Terminal capability negotiation
 
 - [ ] Truecolor support detection (`COLORTERM` env var + optional query).
 - [ ] Kitty keyboard protocol support query (`CSI ?u` / `CSI ?<flags>u`).
-- [ ] Bracketed paste support — generally safe to assume, but gate it
-      behind a capability flag rather than hardcoding.
+- [ ] Bracketed paste / mouse-mode support detection — currently enabled
+      unconditionally in `ansi.cpp` (`?2004h`, `?1002h`, `?1006h`) rather than
+      gated behind a capability flag.
 
-## 13. Testing
+## 12. Testing
 
-- [ ] Headless `CellBuffer` snapshot tests (build a frame, diff, assert
-      expected `CellDiff`s) — would have caught the swallowed-event bug
-      from this session at the `Input`/dispatch layer instead of by hand
-      with `fprintf` tracing.
-- [ ] `EventParser` unit tests per byte sequence (arrows, escape, CSI,
-      once modifiers/function-keys land).
-- [ ] Component `handle()` tests independent of rendering (selection
-      wrap-around, scroll-follow behavior — the exact class of off-by-one
-      bug already found in `Menu::handle`'s wraparound bounds).
+- [x] `tests/` directory with CTest wiring exists — 9 binaries.
+- [ ] Fix the abort-and-skip problem in the test harness itself (see "Known test
+      failures") before trusting pass/fail counts on a larger suite.
+- [ ] Fix the 2 currently-failing assertions.
+- [ ] Add coverage for `Checkbox`, `Dialog`, `Paragraph`, `Split`, and
+      `TextInput` — all five exist as real components (not stubs) but none
+      currently have any tests.
+- [ ] Add a test for `async::Channel<T>` and for the `Input::poll` `extra_fds`
+      wiring once §4 is fixed.
+- [ ] Add a resize-path test (SIGWINCH → `Resize` event → buffer invalidation →
+      full redraw) — currently only verified by reading the code, not by a test.

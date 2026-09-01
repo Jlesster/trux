@@ -60,16 +60,19 @@ public:
     template <component::ComponentType T>
     void push(T& component, layout::Region area, bool modal = false) {
         auto id = static_cast<focus::FocusID>(&component);
-        if constexpr(component::HasBorderColor<T>) {
-            component.border_color =
-                m_focus.is_focused(id) ? m_focus_color : m_default_color;
-        }
         push_generic(
             id,
             area,
             modal,
             input::Handleable<T>,
-            [&] { component.build(area, m_commands); },
+            [&] {
+                if constexpr(component::HasBorderColor<T>) {
+                    component.border_color = m_focus.is_focused(id)
+                                                 ? m_focus_color
+                                                 : m_default_color;
+                }
+                component.build(area, m_commands);
+            },
             [&component](const input::Event& e) -> bool {
                 if constexpr(input::Handleable<T>) return component.handle(e);
                 else return false;
@@ -141,11 +144,12 @@ private:
                       bool           handleable,
                       BuildFn&&      build_fn,
                       HandleFn&&     handle_fn) {
+        if(!modal && handleable) m_focus.register_focusable(id);
+
         m_commands.push(SetClip{area, modal});
         build_fn();
         m_commands.push(ClearClip{});
 
-        if(!modal && handleable) m_focus.register_focusable(id);
         if(handleable)
             m_handlers.push_back(
                 Handler{id, area, modal, std::forward<HandleFn>(handle_fn)});
