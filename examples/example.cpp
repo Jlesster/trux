@@ -3,7 +3,6 @@
 #include "trux/component/dropdown.hpp"
 #include "trux/component/paragraph.hpp"
 
-#include <ranges>
 #include <trux/core.hpp>
 
 using namespace trux;

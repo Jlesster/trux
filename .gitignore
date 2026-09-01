@@ -2,5 +2,5 @@ builddir-linux/
 .direnv/
 .cache
 CMakeUserPresets.json
-compile-commands.json
+compile_commands.json
 debug.log

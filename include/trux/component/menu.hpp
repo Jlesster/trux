@@ -8,7 +8,6 @@
 #include "trux/style/style.hpp"
 
 #include <algorithm>
-#include <string>
 #include <vector>
 
 namespace trux::component {
@@ -17,6 +16,7 @@ struct Menu {
         : items(items), selected(selected), scroll_offset(scroll_offset) {}
 
     std::vector<std::string>& items;
+    std::vector<style::Style> item_styles;
 
     style::Style   selected_style{style::Style::Italic};
     ComponentFlags flags{};
@@ -26,6 +26,17 @@ struct Menu {
     int& selected;
 
     mutable int last_height{0};
+
+    void set_style(size_t index, style::Style style) {
+        if(index >= item_styles.size())
+            item_styles.resize(items.size(), style::Style::None);
+        item_styles[index] = style;
+    }
+
+    style::Style style_for(size_t index) const {
+        return index < item_styles.size() ? item_styles[index]
+                                          : style::Style::None;
+    }
 
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         auto content = area;
@@ -48,8 +59,9 @@ struct Menu {
             cmd.push(renderer::DrawText{
                 .position = pos,
                 .text     = items[i],
-                .style = (static_cast<int>(i) == selected) ? selected_style
-                                                           : style::Style::None,
+                .style    = (static_cast<int>(i) == selected)
+                                ? (style_for(i) | selected_style)
+                                : style_for(i),
             });
             pos.y++;
         }

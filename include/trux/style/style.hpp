@@ -13,4 +13,24 @@ enum class Style : uint8_t {
     Dim       = 1 << 5,
     Strike    = 1 << 6,
 };
+
+constexpr Style operator|(Style lhs, Style rhs) {
+    return static_cast<Style>(static_cast<uint8_t>(lhs) |
+                              static_cast<uint8_t>(rhs));
+}
+
+constexpr Style& operator|=(Style& lhs, Style rhs) {
+    lhs = lhs | rhs;
+    return lhs;
+}
+
+constexpr Style operator&(Style lhs, Style rhs) {
+    return static_cast<Style>(static_cast<uint8_t>(lhs) &
+                              static_cast<uint8_t>(rhs));
+}
+
+constexpr bool has(Style value, Style flag) {
+    return static_cast<uint8_t>(value & flag) != 0;
+}
+
 }  // namespace trux::style
