@@ -1,14 +1,38 @@
 #pragma once
 
+#include "trux/component/component_flags.hpp"
 #include "trux/layout/position.hpp"
 #include "trux/layout/rect.hpp"
 
 #include <cstddef>
 #include <memory>
+#include <tuple>
+#include <type_traits>
 
 namespace trux::component {
 struct ComponentBase;
+}  // namespace trux::component
+namespace trux::renderer {
+class DrawCommandBuffer;
 }
+
+namespace trux::layout {
+class Region;
+}  // namespace trux::layout
+
+namespace trux::component {
+
+template <typename T>
+concept ComponentType = requires(const T&                     component,
+                                 layout::Region               area,
+                                 renderer::DrawCommandBuffer& commands) {
+    { component.flags } -> std::same_as<const ComponentFlags&>;
+    { component.build(area, commands) } -> std::same_as<void>;
+};
+
+template <ComponentType T> struct ComponentWrapper;
+
+}  // namespace trux::component
 
 namespace trux::layout {
 
@@ -55,8 +79,16 @@ public:
     [[nodiscard]]
     Position absolute(Position local) const noexcept;
 
+    template <typename T> Region& operator=(T comp) {
+        set_component(
+            std::make_shared<component::ComponentWrapper<T>>(std::move(comp)));
+        return *this;
+    }
+    void build(renderer::DrawCommandBuffer& cmd) const;
+
 private:
     friend void propagate_resize(Region&, Size);
+    void        set_component(std::shared_ptr<component::ComponentBase> c);
 
     std::shared_ptr<RegionNode> m_node;
     Rect                        m_rect;
@@ -64,8 +96,9 @@ private:
 void propagate_resize(Region&, Size);
 
 struct Split {
-    Region first;
-    Region second;
+    Region                    first;
+    Region                    second;
+    component::ComponentFlags flags{};
 
     constexpr Region& operator[](std::size_t i) noexcept {
         return i == 0 ? first : second;
@@ -79,6 +112,32 @@ struct Split {
 
     constexpr const Region* begin() const noexcept { return &first; }
     constexpr const Region* end() const noexcept { return &second + 1; }
+
+    void build(Region area, renderer::DrawCommandBuffer& cmd) const;
 };
 
 }  // namespace trux::layout
+
+namespace trux::layout {
+
+template <std::size_t I> constexpr Region& get(Split& s) noexcept {
+    static_assert(I < 2,
+                  "Split only exposes first/second to structured binding");
+    return I == 0 ? s.first : s.second;
+}
+template <std::size_t I> constexpr const Region& get(const Split& s) noexcept {
+    static_assert(I < 2,
+                  "Split only exposes first/second to structured binding");
+    return I == 0 ? s.first : s.second;
+}
+
+}  // namespace trux::layout
+
+namespace std {
+template <>
+struct tuple_size<trux::layout::Split>
+    : std::integral_constant<std::size_t, 2> {};
+template <std::size_t I> struct tuple_element<I, trux::layout::Split> {
+    using type = trux::layout::Region;
+};
+}  // namespace std

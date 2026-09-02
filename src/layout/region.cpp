@@ -1,4 +1,6 @@
+#include "trux/component/component.hpp"
 #include "trux/layout/position.hpp"
+#include "trux/renderer/draw_command_buffer.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -11,11 +13,13 @@ using namespace trux;
 struct layout::RegionNode {
     Rect                                       rect;
     std::map<SplitKey, std::shared_ptr<Split>> children;
+    std::shared_ptr<component::ComponentBase>  component;
 };
 
 layout::Region::Region(Position pos, Size size)
     : m_node(std::make_shared<RegionNode>(RegionNode{
           Rect{pos, size},
+          {},
           {}
 })) {}
 
@@ -24,6 +28,21 @@ layout::Rect layout::Region::rect() const noexcept { return m_node->rect; }
 
 layout::Position layout::Region::position() const noexcept {
     return m_node->rect.position;
+}
+
+void layout::Region::set_component(
+    std::shared_ptr<component::ComponentBase> c) {
+    m_node->component = std::move(c);
+}
+
+void layout::Region::build(renderer::DrawCommandBuffer& cmd) const {
+    if(m_node->component) m_node->component->build(*this, cmd);
+}
+
+void layout::Split::build(Region /*area*/,
+                          renderer::DrawCommandBuffer& cmd) const {
+    first.build(cmd);
+    second.build(cmd);
 }
 
 bool layout::Region::contains(Position pos) const noexcept {
@@ -171,12 +190,12 @@ void layout::propagate_resize(layout::Region& region, layout::Size new_size) {
     std::function<void(RegionNode&)> resize_children = [&](RegionNode& node) {
         for(auto& [key, split] : node.children) {
             auto& parent_rect = node.rect;
-            int   value       = key.fixed
-                                    ? key.value
-                                    : (key.orientation == Orientation::Vertical
-                                           ? parent_rect.size.width * key.value / 100
-                                           : parent_rect.size.height * key.value / 100);
-            int   overlap     = key.shared ? 1 : 0;
+            int value = key.fixed
+                            ? key.value
+                            : (key.orientation == Orientation::Vertical
+                                   ? parent_rect.size.width * key.value / 100
+                                   : parent_rect.size.height * key.value / 100);
+            int overlap = key.shared ? 1 : 0;
 
             if(key.orientation == Orientation::Vertical) {
                 split->first.m_node->rect = {

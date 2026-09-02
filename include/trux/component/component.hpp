@@ -25,14 +25,6 @@ to_views(const std::vector<std::string>& items) {
 }
 
 template <typename T>
-concept ComponentType = requires(const T&                     component,
-                                 layout::Region               area,
-                                 renderer::DrawCommandBuffer& commands) {
-    { component.flags } -> std::same_as<const ComponentFlags&>;
-    { component.build(area, commands) } -> std::same_as<void>;
-};
-
-template <typename T>
 concept HasBorderColor = requires(T& t, style::Color c) { t.border_color = c; };
 
 struct FlagModifier {
