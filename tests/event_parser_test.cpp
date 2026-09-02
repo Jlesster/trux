@@ -71,7 +71,7 @@ void test_escape_printable_is_alt_key() {
 void test_resolve_pending_on_bare_escape() {
     input::EventParser parser;
 
-    parser.parse('\x1b');
+    auto result = parser.parse('\x1b');
     assert(parser.pending());
 
     auto resolved = parser.resolve_pending();
@@ -142,8 +142,8 @@ void test_ss3_function_keys() {
 void test_ss3_incomplete_resolves_to_escape() {
     input::EventParser parser;
 
-    parser.parse('\x1b');
-    parser.parse('O');
+    auto result1 = parser.parse('\x1b');
+    auto result2 = parser.parse('O');
     assert(parser.pending());
 
     auto resolved = parser.resolve_pending();

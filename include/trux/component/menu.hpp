@@ -8,14 +8,17 @@
 #include "trux/style/style.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <vector>
 
 namespace trux::component {
-struct Menu {
-    Menu(std::vector<std::string>& items, int& selected, int& scroll_offset)
-        : items(items), selected(selected), scroll_offset(scroll_offset) {}
+template <typename R, typename Proj = std::identity> struct Menu {
+    Menu(R& items, int& selected, int& scroll_offset, Proj proj = {})
+        : items(items), selected(selected), scroll_offset(scroll_offset),
+          proj(proj) {}
 
-    std::vector<std::string>& items;
+    R&                        items;
+    Proj                      proj;
     std::vector<style::Style> item_styles;
 
     style::Style   selected_style{style::Style::Italic};
@@ -58,7 +61,7 @@ struct Menu {
         for(size_t i = begin; i < end; i++) {
             cmd.push(renderer::DrawText{
                 .position = pos,
-                .text     = items[i],
+                .text     = std::invoke(proj, items[i]),
                 .style    = (static_cast<int>(i) == selected)
                                 ? (style_for(i) | selected_style)
                                 : style_for(i),

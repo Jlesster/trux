@@ -1,23 +1,24 @@
 #pragma once
 
 #include "trux/component/border.hpp"
-#include "trux/component/component.hpp"
 #include "trux/component/component_flags.hpp"
+#include "trux/input/event.hpp"
 #include "trux/input/key.hpp"
 #include "trux/renderer/draw_command_buffer.hpp"
 #include "trux/style/color.hpp"
 #include "trux/style/style.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <string_view>
-#include <vector>
 
 namespace trux::component {
-struct Dropdown {
-    explicit Dropdown(std::vector<std::string>& options, int& scroll_offset)
-        : options(to_views(options)), scroll_offset(scroll_offset) {}
+template <typename R, typename Proj = std::identity> struct Dropdown {
+    explicit Dropdown(R& options, int& scroll_offset, Proj proj = {})
+        : options(options), scroll_offset(scroll_offset), proj(proj) {}
 
-    std::vector<std::string_view> options;
+    R&   options;
+    Proj proj;
 
     size_t selected{0};
     bool   open{false};
@@ -40,8 +41,8 @@ struct Dropdown {
         if(!open) {
             cmd.push(renderer::DrawText{
                 .position = pos,
-                .text     = options.empty() ? std::string_view{"--"}
-                                            : options[selected],
+                .text = options.empty() ? std::string_view{"--"}
+                                        : std::invoke(proj, options[selected]),
             });
             return;
         }
@@ -57,7 +58,7 @@ struct Dropdown {
         for(size_t i = begin; i < end; i++) {
             cmd.push(renderer::DrawText{
                 .position = pos,
-                .text     = options[i],
+                .text     = std::invoke(proj, options[i]),
                 .style = (static_cast<int>(i) == selected) ? highlight_style
                                                            : style::Style::None,
             });

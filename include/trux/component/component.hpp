@@ -6,23 +6,10 @@
 #include "trux/renderer/draw_command_buffer.hpp"
 #include "trux/style/color.hpp"
 
-#include <concepts>
 #include <memory>
-#include <string>
-#include <string_view>
 #include <type_traits>
-#include <vector>
 
 namespace trux::component {
-
-[[nodiscard]]
-inline std::vector<std::string_view>
-to_views(const std::vector<std::string>& items) {
-    std::vector<std::string_view> views;
-    views.reserve(items.size());
-    for(const auto& s : items) views.push_back(s);
-    return views;
-}
 
 template <typename T>
 concept HasBorderColor = requires(T& t, style::Color c) { t.border_color = c; };
@@ -79,7 +66,8 @@ struct ComponentBase {
     virtual ~ComponentBase()                             = default;
     virtual void build(layout::Region               area,
                        renderer::DrawCommandBuffer& cmd) = 0;
-    virtual bool handle(const input::Event& event) { return false; }
+    virtual bool handle(const input::Event&) { return false; }
+
     virtual const ComponentFlags& flags() const = 0;
 };
 

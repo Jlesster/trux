@@ -7,7 +7,6 @@
 #include "trux/style/color.hpp"
 
 #include <algorithm>
-#include <memory>
 #include <string_view>
 #include <trux/component/border.hpp>
 #include <trux/component/component.hpp>

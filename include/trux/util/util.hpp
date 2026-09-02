@@ -4,7 +4,6 @@
 #include "trux/style/style.hpp"
 
 #include <format>
-#include <iterator>
 #include <optional>
 #include <string_view>
 #include <utility>

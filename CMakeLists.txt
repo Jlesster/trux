@@ -2,6 +2,11 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "In-source builds are not allowed. Please use:\n  cmake -B build\nThen delete CMakeCache.txt and CMakeFiles/ from this directory.")
 endif()
 
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    target_compile_options(${PROJECT_NAME}_lib PRIVATE -fno-sanitize=all)
+    target_link_options(${PROJECT_NAME}_lib PRIVATE -fno-sanitize=all)
+endif()
+
 cmake_minimum_required(VERSION 3.14)
 project(trux LANGUAGES CXX VERSION 0.0.1)
 

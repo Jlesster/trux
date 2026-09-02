@@ -1,5 +1,5 @@
 BUILD_DIR := builddir-linux
-PRESET    := debug
+PRESET    := release
 LIB       := $(BUILD_DIR)/libtrux_lib.a
 PREFIX    := /usr
 

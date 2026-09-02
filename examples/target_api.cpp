@@ -1,6 +1,5 @@
 #include "trux/component/checkbox.hpp"
 #include "trux/component/component.hpp"
-#include "trux/input/modifiers.hpp"
 
 #include <trux/core.hpp>
 

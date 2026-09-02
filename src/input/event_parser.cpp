@@ -2,12 +2,8 @@
 #include "trux/input/key.hpp"
 #include "trux/input/modifiers.hpp"
 #include "trux/input/mouse.hpp"
-#include "trux/renderer/cell.hpp"
 #include "trux/util/util.hpp"
 
-#include <algorithm>
-#include <execution>
-#include <format>
 #include <optional>
 #include <trux/input/event_parser.hpp>
 
@@ -212,7 +208,9 @@ std::optional<input::Event> input::EventParser::finish_csi(char final_byte) {
         }
     }();
 
-    auto with_mods = [&](char32_t code) { return Event::key(code, mods); };
+    auto with_mods = [&](char32_t code) {
+        return Event::key(code, mods, key_state);
+    };
 
     switch(final_byte) {
         case 'A':

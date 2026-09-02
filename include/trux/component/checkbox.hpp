@@ -7,19 +7,22 @@
 #include "trux/style/style.hpp"
 
 #include <algorithm>
-#include <string>
+#include <functional>
 #include <vector>
 namespace trux::component {
 
-struct Checkbox {
-    Checkbox(std::vector<std::string>& items,
-             std::vector<bool>&        checked,
-             int&                      cursor,
-             int&                      scroll_offset)
+template <typename R, typename Proj = std::identity> struct Checkbox {
+    Checkbox(R&                 items,
+             std::vector<bool>& checked,
+             int&               cursor,
+             int&               scroll_offset,
+             Proj               proj = {})
         : items(items), checked(checked), cursor(cursor),
-          scroll_offset(scroll_offset) {}
-    std::vector<std::string>& items;
-    std::vector<bool>&        checked;
+          scroll_offset(scroll_offset), proj(proj) {}
+
+    R&                 items;
+    Proj               proj;
+    std::vector<bool>& checked;
 
     style::Style   cursor_style{style::Style::Italic};
     ComponentFlags flags{};
@@ -56,7 +59,7 @@ struct Checkbox {
             });
             cmd.push(renderer::DrawText{
                 .position = {pos.x + 4, pos.y},
-                .text     = items[i],
+                .text     = std::invoke(proj, items[i]),
                 .style = (static_cast<int>(i) == cursor) ? cursor_style
                                                          : style::Style::None,
             });

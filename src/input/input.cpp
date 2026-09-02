@@ -27,22 +27,28 @@ input::Event input::Input::poll() {
 input::Event input::Input::poll(Terminal&            terminal,
                                 std::span<const int> extra_fds) {
     if(auto event = next_unconsumed(terminal)) return *event;
-
     while(!terminal.should_quit()) {
         if(terminal.resized()) {
             m_events.push(Event::from_resize(terminal.size()));
             if(auto event = next_unconsumed(terminal)) return *event;
         }
-
         int async_fd = async::Executor::instance().fd();
-        if(!terminal.wait_readable(STDIN_FILENO, std::array{async_fd}, 100)) {
+
+        std::vector<int> watch_fds{async_fd};
+        watch_fds.insert(watch_fds.end(), extra_fds.begin(), extra_fds.end());
+
+        if(!terminal.wait_readable(STDIN_FILENO, watch_fds, 100)) {
             if(m_want_tick) return Event::tick();
             continue;
         }
-
-        if(auto ready = terminal.last_ready_fd(); ready && *ready == async_fd) {
+        auto ready = terminal.last_ready_fd();
+        if(ready && *ready == async_fd) {
             async::Executor::instance().run_pending(async_fd);
             continue;
+        }
+        if(ready && *ready != STDIN_FILENO) {
+            // one of extra_fds woke us — not stdin, not async_fd
+            return Event::from_async(*ready);
         }
 
         auto byte = terminal.read();
@@ -53,7 +59,6 @@ input::Event input::Input::poll(Terminal&            terminal,
             if(!next) break;
             push(*next);
         }
-
         if(m_parser.pending()) {
             if(auto event = m_parser.resolve_pending()) m_events.push(*event);
         }

@@ -8,14 +8,17 @@
 #include "trux/style/style.hpp"
 
 #include <algorithm>
+#include <functional>
 #include <vector>
 
 namespace trux::component {
-struct List {
-    List(std::vector<std::string>& items, int& scroll_offset)
-        : items(items), scroll_offset(scroll_offset) {}
 
-    std::vector<std::string>& items;
+template <typename R, typename Proj = std::identity> struct List {
+    List(R& items, int& scroll_offset, Proj proj = {})
+        : items(items), scroll_offset(scroll_offset), proj(proj) {}
+
+    R&                        items;
+    Proj                      proj;
     std::vector<style::Style> item_styles;
 
     ComponentFlags flags{};
@@ -52,10 +55,12 @@ struct List {
         size_t end =
             std::min(items.size(), begin + static_cast<size_t>(std::max(h, 0)));
         for(size_t i = begin; i < end; i++) {
-            cmd.push(renderer::DrawText{
-                .position = pos, .text = items[i], .style = style_for(i)});
+            cmd.push(renderer::DrawText{.position = pos,
+                                        .text     = std::invoke(proj, items[i]),
+                                        .style    = style_for(i)});
             pos.y++;
         }
     }
 };
+
 }  // namespace trux::component

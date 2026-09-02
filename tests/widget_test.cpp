@@ -10,7 +10,6 @@
 #include "trux/renderer/renderer.hpp"
 
 #include <cassert>
-#include <ranges>
 #include <string>
 #include <vector>
 
@@ -208,15 +207,16 @@ void container_test() {
     int                      left_scroll  = 0;
     int                      right_scroll = 0;
 
+    using StringList = component::List<std::vector<std::string>>;
+
     component::Container container;
     container.percent    = 50;
     container.horizontal = true;
-    container.first =
-        std::make_unique<component::ComponentWrapper<component::List>>(
-            component::List(left_items, left_scroll));
+    container.first = std::make_unique<component::ComponentWrapper<StringList>>(
+        StringList(left_items, left_scroll));
     container.second =
-        std::make_unique<component::ComponentWrapper<component::List>>(
-            component::List(right_items, right_scroll));
+        std::make_unique<component::ComponentWrapper<StringList>>(
+            StringList(right_items, right_scroll));
 
     renderer::DrawCommandBuffer cmd;
     container.build(layout::init({20, 4}), cmd);
