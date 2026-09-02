@@ -132,6 +132,38 @@ void renderer::Renderer::push(component::ComponentBase& component,
         [&component](const input::Event& e) { return component.handle(e); });
 }
 
+void renderer::Renderer::push(layout::Split& split,
+                              layout::Region area,
+                              bool           modal) {
+    push_generic(
+        static_cast<focus::FocusID>(&split),
+        area,
+        modal,
+        false,
+        [&] { split.build(area, m_commands); },
+        [](const input::Event&) { return false; });
+    register_region(split.first, modal);
+    register_region(split.second, modal);
+}
+
+void renderer::Renderer::register_region(layout::Region region, bool modal) {
+    auto* comp = region.component_ptr();
+    if(!comp) return;
+
+    if(auto* nested = comp->as_split()) {
+        register_region(nested->first, modal);
+        register_region(nested->second, modal);
+        return;
+    }
+    if(!comp->handleable()) return;
+    auto id = static_cast<focus::FocusID>(comp);
+    if(!modal) m_focus.register_focusable(id);
+    m_handlers.push_back(
+        Handler{id, region, modal, [comp](const input::Event& e) {
+                    return comp->handle(e);
+                }});
+}
+
 void renderer::Renderer::text(layout::Region   region,
                               layout::Position pos,
                               std::string_view text) {

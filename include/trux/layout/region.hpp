@@ -79,6 +79,8 @@ public:
     [[nodiscard]]
     Position absolute(Position local) const noexcept;
 
+    [[nodiscard]]
+    component::ComponentBase*     component_ptr() const noexcept;
     template <typename T> Region& operator=(T comp) {
         set_component(
             std::make_shared<component::ComponentWrapper<T>>(std::move(comp)));

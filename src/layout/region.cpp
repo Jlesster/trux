@@ -57,6 +57,10 @@ layout::Position layout::Region::absolute(Position local) const noexcept {
             m_node->rect.position.y + local.y};
 }
 
+component::ComponentBase* layout::Region::component_ptr() const noexcept {
+    return m_node->component.get();
+}
+
 layout::Split& layout::Region::v_split(int percent) const {
     percent = std::clamp(percent, 0, 100);
     SplitKey key{Orientation::Vertical, false, percent};

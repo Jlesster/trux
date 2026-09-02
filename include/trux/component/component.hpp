@@ -67,6 +67,9 @@ struct ComponentBase {
     virtual void build(layout::Region               area,
                        renderer::DrawCommandBuffer& cmd) = 0;
     virtual bool handle(const input::Event&) { return false; }
+    virtual bool handleable() const { return false; }
+
+    virtual const layout::Split* as_split() const { return nullptr; }
 
     virtual const ComponentFlags& flags() const = 0;
 };
@@ -80,6 +83,14 @@ template <ComponentType T> struct ComponentWrapper : ComponentBase {
     bool handle(const input::Event& e) override {
         if constexpr(input::Handleable<T>) return inner.handle(e);
         else return false;
+    }
+    bool handleable() const override {
+        if constexpr(input::Handleable<T>) return true;
+        else return false;
+    }
+    const layout::Split* as_split() const override {
+        if constexpr(std::is_same_v<T, layout::Split>) return &inner;
+        else return nullptr;
     }
     const ComponentFlags& flags() const override { return inner.flags; }
 };

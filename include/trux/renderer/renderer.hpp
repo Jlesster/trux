@@ -57,6 +57,7 @@ public:
               layout::Region            area,
               bool                      modal = false);
 
+    void push(layout::Split& split, layout::Region area, bool modal = false);
     template <component::ComponentType T>
     void push(T& component, layout::Region area, bool modal = false) {
         auto id = static_cast<focus::FocusID>(&component);
@@ -136,6 +137,7 @@ private:
     void resolve();
     void put_opaque(layout::Position, Cell);
     void coalesce_borders();
+    void register_region(layout::Region, bool);
 
     template <typename BuildFn, typename HandleFn>
     void push_generic(focus::FocusID id,
