@@ -1,3 +1,6 @@
+/// @file paragraph.hpp
+/// @brief Paragraph: word-wrapped, vertically-scrollable block text.
+
 #pragma once
 
 #include "trux/component/border.hpp"
@@ -14,20 +17,32 @@
 
 namespace trux::component {
 
+/// Displays `text` word-wrapped to the component's width and
+/// vertically scrollable via Up/Down. Rewraps on every build() (to
+/// the current width), so `text` and `scroll_offset` may change
+/// externally between frames.
 struct Paragraph {
+    /// Binds the paragraph to external `text`/`scroll_offset` storage, by reference.
     Paragraph(std::string& text, int& scroll_offset)
         : text(text), scroll_offset(scroll_offset) {}
 
     std::string& text;
+    /// Index of the first visible wrapped line; clamped during build().
     int&         scroll_offset;
 
     style::Style   text_style{style::Style::None};
     ComponentFlags flags{};
     style::Color   border_color{255, 255, 255, 255};
 
+    /// Content height from the most recent build(); reserved for
+    /// callers wanting to know the visible line count.
     mutable int                      last_height{0};
+    /// Word-wrapped lines from the most recent build(), cached so
+    /// callers can inspect what was actually rendered.
     mutable std::vector<std::string> m_lines;
 
+    /// Re-wraps `text` to the content width, clamps `scroll_offset`,
+    /// and draws the visible slice of wrapped lines.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         auto content = area;
         if(auto border = active_border(flags)) {
@@ -56,6 +71,9 @@ struct Paragraph {
         }
     }
 
+    /// Up scrolls up one line (clamped at 0); Down scrolls down one
+    /// line (unclamped here — clamped against content on the next
+    /// build()). Returns whether the event was consumed.
     [[nodiscard]]
     bool handle(const input::Event& event) {
         switch(event.code) {
@@ -71,6 +89,9 @@ struct Paragraph {
     }
 
 private:
+    /// Greedily word-wraps `text` (splitting on whitespace) into
+    /// lines no wider than `width` columns. Note: uses byte length,
+    /// not display width, so this assumes ASCII-ish content.
     [[nodiscard]]
     static std::vector<std::string> wrap(const std::string& text, int width) {
         std::vector<std::string> lines;

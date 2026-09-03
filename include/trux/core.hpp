@@ -1,3 +1,9 @@
+/// @file core.hpp
+/// @brief Convenience umbrella header that includes all of trux's
+///        public headers. Include this for quick access to the whole
+///        library; include individual headers directly to minimize
+///        compile-time dependencies.
+
 #pragma once
 
 #include "trux/async/channel.hpp"

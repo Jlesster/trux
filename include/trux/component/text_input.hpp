@@ -1,3 +1,7 @@
+/// @file text_input.hpp
+/// @brief TextInput: a single-line, horizontally-scrolling editable
+///        text field with UTF-8-aware cursor movement and editing.
+
 #pragma once
 
 #include "trux/input/key.hpp"
@@ -15,18 +19,33 @@
 
 namespace trux::component {
 
+/// A single-line text field editing an external `value` string with
+/// an external `cursor` byte offset, both kept by reference. Handles
+/// UTF-8 decoding for cursor movement/display width, horizontally
+/// scrolls its view to keep the cursor visible when `value` is wider
+/// than the component, and renders the cursor as a styled cell over
+/// the character it's on (or a trailing space at end-of-text).
 struct TextInput {
+    /// Binds the field to external `value`/`cursor` storage, kept by reference.
     TextInput(std::string& value, int& cursor) : value(value), cursor(cursor) {}
 
     std::string& value;
+    /// Byte offset into `value` where the cursor sits; clamped to a
+    /// valid UTF-8 boundary during build().
     int&         cursor;
 
     ComponentFlags flags{};
+    /// Style used to draw the cell the cursor is over.
     style::Style   cursor_style{style::Style::Reverse};
     style::Color   border_color{255, 255, 255, 255};
 
+    /// Byte offset of the first character in the scrolled-into-view
+    /// window, recomputed each build() to keep the cursor visible.
     mutable int m_view_start{0};
 
+    /// Clamps `cursor` to a valid position, adjusts m_view_start so
+    /// the cursor stays within the visible width, and draws the
+    /// visible slice of `value` with the cursor cell highlighted.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         auto content = area;
         if(auto border = active_border(flags)) {
@@ -120,6 +139,12 @@ struct TextInput {
         }
     }
 
+    /// Handles editing input: Paste inserts sanitized text (control
+    /// characters other than none are stripped) at the cursor;
+    /// Left/Right/Home/End/Backspace/Delete move or edit around the
+    /// cursor (Ctrl+Backspace/Delete act on whole words); any other
+    /// printable, non-modified codepoint is inserted. Returns whether
+    /// the event was consumed.
     [[nodiscard]]
     bool handle(const input::Event& event) {
         if(event.kind == input::EventKind::Paste) {

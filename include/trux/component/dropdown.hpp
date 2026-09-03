@@ -1,3 +1,8 @@
+/// @file dropdown.hpp
+/// @brief Dropdown: a closed/open selector — collapsed it shows only
+///        the current selection, and Enter/Space expands it into a
+///        scrollable option list.
+
 #pragma once
 
 #include "trux/component/border.hpp"
@@ -13,23 +18,43 @@
 #include <string_view>
 
 namespace trux::component {
+
+/// A collapsible single-selection list. While closed (the default),
+/// only the currently selected option is drawn. Enter or Space opens
+/// it, revealing a vertically-scrollable list where Up/Down (or j/k)
+/// move the selection, and Enter/Space/Escape close it again.
+///
+/// @tparam R    Range of options to display.
+/// @tparam Proj Projection from an option to something DrawText
+///              accepts. Defaults to std::identity.
 template <typename R, typename Proj = std::identity> struct Dropdown {
+    /// Binds the dropdown to external `options` and `scroll_offset`
+    /// storage, kept by reference.
     explicit Dropdown(R& options, int& scroll_offset, Proj proj = {})
         : options(options), scroll_offset(scroll_offset), proj(proj) {}
 
     R&   options;
     Proj proj;
 
+    /// Index of the currently selected option.
     size_t selected{0};
+    /// Whether the option list is currently expanded.
     bool   open{false};
 
+    /// Style applied to the highlighted option while open.
     style::Style   highlight_style{style::Style::Reverse};
     ComponentFlags flags{};
     style::Color   border_color{255, 255, 255, 255};
 
+    /// Index of the first visible option while open; clamped during build().
     int&        scroll_offset;
+    /// Content height from the most recent build(), reserved for
+    /// consistency with the other list-like components (unused while closed).
     mutable int last_height{0};
 
+    /// While closed, draws only the selected option's text (or `--`
+    /// if `options` is empty). While open, clamps `scroll_offset` and
+    /// draws the visible slice of options, highlighting `selected`.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         auto content = area;
         if(auto border = active_border(flags)) {
@@ -66,6 +91,10 @@ template <typename R, typename Proj = std::identity> struct Dropdown {
         }
     }
 
+    /// While closed: Enter/Space opens the list. While open: Up/k and
+    /// Down/j move `selected` (wrapping); Enter/Space/Escape close
+    /// it; any other key is consumed without effect. Returns whether
+    /// the event was consumed.
     [[nodiscard]]
     bool handle(const input::Event& event) {
         if(options.empty()) return false;

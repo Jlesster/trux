@@ -87,7 +87,7 @@ version.
 | Async task spawning (`Executor`) + generic async queue (`Channel<T>`)                                                               | ✅ (Channel not yet wired into the main input-poll loop) |
 | Chord/keymap resolution, `Command` type, `Theme`/`StyledSpan`, floating/overlay regions, clipboard                                  | ✅                                                       |
 
-## Building
+## Building {#building}
 
 Requires **GCC 14+** (needs `<print>` and `<expected>` — GCC 13's libstdc++
 doesn't have them, confirmed by testing directly), CMake ≥ 3.14, and Ninja.
@@ -125,7 +125,7 @@ examples/         runnable example(s)
 tests/            unit tests (CTest)
 ```
 
-## License
+## License {#license}
 
 Licensed under MIT
 

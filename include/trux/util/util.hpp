@@ -1,3 +1,11 @@
+/// @file util.hpp
+/// @brief UTF-8 encode/decode, terminal glyph width, word/grapheme
+///        boundary helpers, and SGR escape code generation.
+///
+/// Most of these are the low-level primitives that Terminal,
+/// Renderer, and text-editing components (e.g. TextInput) build on;
+/// application code rarely needs to call them directly.
+
 #pragma once
 
 #include "trux/renderer/cell.hpp"
@@ -10,12 +18,23 @@
 
 namespace trux::util {
 
+/// Whether `cp` should be treated as part of a "word" for
+/// word-boundary navigation (see prev_word_boundary()/
+/// next_word_boundary()): ASCII alphanumerics, underscore, or any
+/// non-ASCII code point.
 [[nodiscard]]
 inline bool is_word_char(char32_t cp) noexcept {
     return (cp >= '0' && cp <= '9') || (cp >= 'a' && cp <= 'z') ||
            (cp >= 'A' && cp <= 'Z') || cp == '_' || cp > 0x7F;
 }
 
+/// Builds the SGR (Select Graphic Rendition) escape code parameter
+/// string for `cell` — foreground color (always as 24-bit truecolor),
+/// background color (only if `cell.background.a > 0`), and any set
+/// style attributes — ready to be embedded in `"\x1b[{}m"`.
+///
+/// @return The parameter portion only (e.g. `"0;38;2;255;255;255;1"`),
+///         without the leading `\x1b[` or trailing `m`.
 [[nodiscard]]
 inline std::string sgr_codes(const trux::renderer::Cell& cell) {
 

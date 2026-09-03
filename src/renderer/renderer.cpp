@@ -45,6 +45,7 @@ void renderer::Renderer::resize(layout::Size size) {
     m_front.invalidate();
     m_back.resize(size);
     m_owner.assign(static_cast<size_t>(size.width) * size.height, false);
+    layout::propagate_resize(size);
 }
 void renderer::Renderer::resize(layout::Region& root) {
     layout::propagate_resize(root, m_size);

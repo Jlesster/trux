@@ -7,13 +7,23 @@
 #include <map>
 #include <memory>
 #include <trux/layout/region.hpp>
+#include <vector>
 
 using namespace trux;
+
+namespace {
+std::vector<std::weak_ptr<layout::RegionNode>>& root_registry() {
+    static std::vector<std::weak_ptr<layout::RegionNode>> registry;
+    return registry;
+}
+}  // namespace
 
 struct layout::RegionNode {
     Rect                                       rect;
     std::map<SplitKey, std::shared_ptr<Split>> children;
     std::shared_ptr<component::ComponentBase>  component;
+    std::shared_ptr<Split>                     active_split;
+    std::shared_ptr<RegionNode>                parent;
 };
 
 layout::Region::Region(Position pos, Size size)
@@ -22,6 +32,7 @@ layout::Region::Region(Position pos, Size size)
           {},
           {}
 })) {}
+layout::Region::Region() : m_node(std::make_shared<RegionNode>()) {}
 
 layout::Size layout::Region::size() const noexcept { return m_node->rect.size; }
 layout::Rect layout::Region::rect() const noexcept { return m_node->rect; }
@@ -37,12 +48,32 @@ void layout::Region::set_component(
 
 void layout::Region::build(renderer::DrawCommandBuffer& cmd) const {
     if(m_node->component) m_node->component->build(*this, cmd);
+    else if(m_node->active_split) m_node->active_split->build(*this, cmd);
 }
 
 void layout::Split::build(Region /*area*/,
                           renderer::DrawCommandBuffer& cmd) const {
     first.build(cmd);
     second.build(cmd);
+}
+
+layout::Region layout::init(Size size) {
+    Region root{
+        {0, 0},
+        size
+    };
+    root_registry().push_back(root.m_node);
+    return root;
+}
+
+void layout::resize_all_roots(Size new_size) {
+    auto& registry = root_registry();
+    std::erase_if(registry, [](const auto& w) { return w.expired(); });
+    for(auto& weak : registry)
+        if(auto node = weak.lock()) {
+            Region r{node};
+            propagate_resize(r, new_size);
+        }
 }
 
 bool layout::Region::contains(Position pos) const noexcept {
@@ -64,8 +95,10 @@ component::ComponentBase* layout::Region::component_ptr() const noexcept {
 layout::Split& layout::Region::v_split(int percent) const {
     percent = std::clamp(percent, 0, 100);
     SplitKey key{Orientation::Vertical, false, percent};
-    if(auto it = m_node->children.find(key); it != m_node->children.end())
+    if(auto it = m_node->children.find(key); it != m_node->children.end()) {
+        m_node->active_split = it->second;
         return *it->second;
+    }
 
     int first_width = m_node->rect.size.width * percent / 100;
 
@@ -76,19 +109,22 @@ layout::Split& layout::Region::v_split(int percent) const {
         {m_node->rect.position.x + first_width, m_node->rect.position.y },
         {m_node->rect.size.width - first_width, m_node->rect.size.height}
     };
+    first.m_node->parent  = m_node;
+    second.m_node->parent = m_node;
 
     auto [it, _] = m_node->children.emplace(
         key, std::make_shared<Split>(Split{first, second}));
+    m_node->active_split = it->second;
     return *it->second;
 }
 
 layout::Split& layout::Region::h_split(int percent) const {
     percent = std::clamp(percent, 0, 100);
-
     SplitKey key{Orientation::Horizontal, false, percent};
-
-    if(auto it = m_node->children.find(key); it != m_node->children.end())
+    if(auto it = m_node->children.find(key); it != m_node->children.end()) {
+        m_node->active_split = it->second;
         return *it->second;
+    }
 
     int first_height = m_node->rect.size.height * percent / 100;
 
@@ -99,18 +135,22 @@ layout::Split& layout::Region::h_split(int percent) const {
         {m_node->rect.position.x, m_node->rect.position.y + first_height },
         {m_node->rect.size.width, m_node->rect.size.height - first_height}
     };
+    first.m_node->parent  = m_node;
+    second.m_node->parent = m_node;
 
     auto [it, _] = m_node->children.emplace(
         key, std::make_shared<Split>(Split{first, second}));
+    m_node->active_split = it->second;
     return *it->second;
 }
 
 layout::Split& layout::Region::v_split_fixed(int cells) const {
     cells = std::clamp(cells, 0, size().width);
     SplitKey key{Orientation::Vertical, true, cells};
-
-    if(auto it = m_node->children.find(key); it != m_node->children.end())
+    if(auto it = m_node->children.find(key); it != m_node->children.end()) {
+        m_node->active_split = it->second;
         return *it->second;
+    }
 
     auto first = Region{
         m_node->rect.position, {cells, m_node->rect.size.height}
@@ -119,18 +159,22 @@ layout::Split& layout::Region::v_split_fixed(int cells) const {
         {m_node->rect.position.x + cells, m_node->rect.position.y },
         {m_node->rect.size.width - cells, m_node->rect.size.height}
     };
+    first.m_node->parent  = m_node;
+    second.m_node->parent = m_node;
 
     auto [it, _] = m_node->children.emplace(
         key, std::make_shared<Split>(Split{first, second}));
+    m_node->active_split = it->second;
     return *it->second;
 }
 
 layout::Split& layout::Region::h_split_fixed(int cells) const {
     cells = std::clamp(cells, 0, size().height);
     SplitKey key{Orientation::Horizontal, true, cells};
-
-    if(auto it = m_node->children.find(key); it != m_node->children.end())
+    if(auto it = m_node->children.find(key); it != m_node->children.end()) {
+        m_node->active_split = it->second;
         return *it->second;
+    }
 
     auto first = Region{
         m_node->rect.position, {cells, m_node->rect.size.height}
@@ -139,17 +183,22 @@ layout::Split& layout::Region::h_split_fixed(int cells) const {
         {m_node->rect.position.x, m_node->rect.position.y + cells },
         {m_node->rect.size.width, m_node->rect.size.height - cells}
     };
+    first.m_node->parent  = m_node;
+    second.m_node->parent = m_node;
 
     auto [it, _] = m_node->children.emplace(
         key, std::make_shared<Split>(Split{first, second}));
+    m_node->active_split = it->second;
     return *it->second;
 }
 
 layout::Split& layout::Region::v_split_shared(int percent) const {
     percent = std::clamp(percent, 0, 100);
     SplitKey key{Orientation::Vertical, false, percent, true};
-    if(auto it = m_node->children.find(key); it != m_node->children.end())
+    if(auto it = m_node->children.find(key); it != m_node->children.end()) {
+        m_node->active_split = it->second;
         return *it->second;
+    }
 
     int  first_width = m_node->rect.size.width * percent / 100;
     auto first       = Region{
@@ -159,17 +208,22 @@ layout::Split& layout::Region::v_split_shared(int percent) const {
         {m_node->rect.position.x + first_width - 1, m_node->rect.position.y },
         {m_node->rect.size.width - first_width + 1, m_node->rect.size.height}
     };
+    first.m_node->parent  = m_node;
+    second.m_node->parent = m_node;
 
     auto [it, _] = m_node->children.emplace(
         key, std::make_shared<Split>(Split{first, second}));
+    m_node->active_split = it->second;
     return *it->second;
 }
 
 layout::Split& layout::Region::h_split_shared(int percent) const {
     percent = std::clamp(percent, 0, 100);
     SplitKey key{Orientation::Horizontal, false, percent, true};
-    if(auto it = m_node->children.find(key); it != m_node->children.end())
+    if(auto it = m_node->children.find(key); it != m_node->children.end()) {
+        m_node->active_split = it->second;
         return *it->second;
+    }
 
     int  first_height = m_node->rect.size.height * percent / 100;
     auto first        = Region{
@@ -179,9 +233,12 @@ layout::Split& layout::Region::h_split_shared(int percent) const {
         {m_node->rect.position.x, m_node->rect.position.y + first_height - 1 },
         {m_node->rect.size.width, m_node->rect.size.height - first_height + 1}
     };
+    first.m_node->parent  = m_node;
+    second.m_node->parent = m_node;
 
     auto [it, _] = m_node->children.emplace(
         key, std::make_shared<Split>(Split{first, second}));
+    m_node->active_split = it->second;
     return *it->second;
 }
 
@@ -228,3 +285,5 @@ void layout::propagate_resize(layout::Region& region, layout::Size new_size) {
     };
     resize_children(*region.m_node);
 }
+
+void layout::propagate_resize(Size new_size) { resize_all_roots(new_size); }

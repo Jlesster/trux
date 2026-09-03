@@ -1,3 +1,7 @@
+/// @file checkbox.hpp
+/// @brief Checkbox: a scrollable list of independently toggleable
+///        items, with a movable cursor and space-to-toggle input.
+
 #pragma once
 
 #include "trux/component/border.hpp"
@@ -11,7 +15,17 @@
 #include <vector>
 namespace trux::component {
 
+/// A vertically-scrollable checklist: each item in `items` shows a
+/// `[x]`/`[ ]` glyph reflecting the corresponding entry in `checked`,
+/// with `cursor` indicating which row Up/Down/j/k move and Space toggles.
+///
+/// @tparam R    Range of items to display.
+/// @tparam Proj Projection from an item to something DrawText accepts.
+///              Defaults to std::identity.
 template <typename R, typename Proj = std::identity> struct Checkbox {
+    /// Binds the checkbox to external `items`, `checked` (must be the
+    /// same length as `items`), `cursor`, and `scroll_offset` storage,
+    /// all kept by reference.
     Checkbox(R&                 items,
              std::vector<bool>& checked,
              int&               cursor,
@@ -22,16 +36,24 @@ template <typename R, typename Proj = std::identity> struct Checkbox {
 
     R&                 items;
     Proj               proj;
+    /// Checked state, one entry per item in `items`.
     std::vector<bool>& checked;
 
+    /// Style applied to the item under the cursor.
     style::Style   cursor_style{style::Style::Italic};
     ComponentFlags flags{};
     style::Color   border_color{255, 255, 255, 255};
 
+    /// Index of the item the cursor is on.
     int&        cursor;
+    /// Index of the first visible item; clamped during build().
     int&        scroll_offset;
+    /// Content height from the most recent build(), used by
+    /// handle()'s keep_visible() to scroll the cursor into view.
     mutable int last_height{0};
 
+    /// Clamps `scroll_offset`, then draws the visible slice of items
+    /// with their checked-state glyph, highlighting the row at `cursor`.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         auto content = area;
         if(auto border = active_border(flags)) {
@@ -67,6 +89,9 @@ template <typename R, typename Proj = std::identity> struct Checkbox {
         }
     }
 
+    /// Up/k and Down/j move `cursor` (wrapping) and scroll to keep it
+    /// visible; Space toggles the checked state at `cursor`. Returns
+    /// whether the event was consumed.
     [[nodiscard]]
     bool handle(const input::Event& event) {
         if(items.empty()) return false;
