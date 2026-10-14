@@ -16,6 +16,11 @@ std::vector<std::weak_ptr<layout::RegionNode>>& root_registry() {
     static std::vector<std::weak_ptr<layout::RegionNode>> registry;
     return registry;
 }
+
+int resolve_fixed(int cells, int parent) {
+    int value = cells < 0 ? parent + cells : cells;
+    return std::clamp(value, 0, parent);
+}
 }  // namespace
 
 struct layout::RegionNode {
@@ -136,18 +141,18 @@ layout::Split& layout::Region::h_split(int percent) const {
 }
 
 layout::Split& layout::Region::v_split_fixed(int cells) const {
-    cells = std::clamp(cells, 0, size().width);
     SplitKey key{Orientation::Vertical, true, cells};
     if(auto it = m_node->children.find(key); it != m_node->children.end()) {
         m_node->active_split = it->second;
         return *it->second;
     }
 
+    int first_height = resolve_fixed(cells, m_node->rect.size.width);
     auto first =
-        Region{m_node->rect.position, {cells, m_node->rect.size.height}};
-    auto second =
-        Region{{m_node->rect.position.x + cells, m_node->rect.position.y},
-               {m_node->rect.size.width - cells, m_node->rect.size.height}};
+        Region{m_node->rect.position, {first_height, m_node->rect.size.height}};
+    auto second = Region{
+        {m_node->rect.position.x + first_height, m_node->rect.position.y},
+        {m_node->rect.size.width - first_height, m_node->rect.size.height}};
     first.m_node->parent = m_node;
     second.m_node->parent = m_node;
 
@@ -158,18 +163,18 @@ layout::Split& layout::Region::v_split_fixed(int cells) const {
 }
 
 layout::Split& layout::Region::h_split_fixed(int cells) const {
-    cells = std::clamp(cells, 0, size().height);
     SplitKey key{Orientation::Horizontal, true, cells};
     if(auto it = m_node->children.find(key); it != m_node->children.end()) {
         m_node->active_split = it->second;
         return *it->second;
     }
 
+    int first_height = resolve_fixed(cells, m_node->rect.size.height);
     auto first =
-        Region{m_node->rect.position, {m_node->rect.size.width, cells}};
-    auto second =
-        Region{{m_node->rect.position.x, m_node->rect.position.y + cells},
-               {m_node->rect.size.width, m_node->rect.size.height - cells}};
+        Region{m_node->rect.position, {m_node->rect.size.width, first_height}};
+    auto second = Region{
+        {m_node->rect.position.x, m_node->rect.position.y + first_height},
+        {m_node->rect.size.width, m_node->rect.size.height - first_height}};
     first.m_node->parent = m_node;
     second.m_node->parent = m_node;
 
@@ -231,11 +236,11 @@ void layout::propagate_resize(layout::Region& region, layout::Size new_size) {
     std::function<void(RegionNode&)> resize_children = [&](RegionNode& node) {
         for(auto& [key, split] : node.children) {
             auto& parent_rect = node.rect;
-            int value = key.fixed
-                            ? key.value
-                            : (key.orientation == Orientation::Vertical
-                                   ? parent_rect.size.width * key.value / 100
-                                   : parent_rect.size.height * key.value / 100);
+            int parent_extent = key.orientation == Orientation::Vertical
+                                    ? parent_rect.size.width
+                                    : parent_rect.size.height;
+            int value = key.fixed ? resolve_fixed(key.value, parent_extent)
+                                  : parent_extent * key.value / 100;
             int overlap = key.shared ? 1 : 0;
 
             if(key.orientation == Orientation::Vertical) {
