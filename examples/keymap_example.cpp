@@ -23,9 +23,9 @@ using namespace trux;
 enum class Cmd { GotoTop, GotoBottom, DeleteItem, Save };
 
 int main() {
-    auto         terminal = Terminal();
-    auto         renderer = renderer::Renderer(terminal.size());
-    auto         root     = layout::init(terminal.size());
+    auto terminal = Terminal();
+    auto renderer = renderer::Renderer(terminal.size());
+    auto root = layout::init(terminal.size());
     input::Input input;
 
     if(auto result = terminal.init(); !result) return 1;
@@ -41,7 +41,7 @@ int main() {
     // Encode Ctrl+K / Ctrl+S the same way Event::operator char32_t() does
     // (code | mods << 24), so the bound chord matches what feed() computes
     // from a real keypress -- see KEYMAP.md's "encoding modifiers" section.
-    keymap.bind({'k' | input::Mod::Ctrl, 's' | input::Mod::Ctrl}, Cmd::Save);
+    keymap.bind({input::Mod::Ctrl | 'k', input::Mod::Ctrl | 's'}, Cmd::Save);
 
     // check_timeout() has to be polled on a clock, not just on key events --
     // a dangling "g" with nothing typed after it must still resolve (or
@@ -58,15 +58,12 @@ int main() {
         "src/input/event_parser.cpp",
         "src/input/input.cpp",
     };
-    int selected = 0;
-    int offset   = 0;
 
     std::string status =
         "gg: top   G: bottom   dd: delete   ^K^S: save   q: quit";
 
     // --- widgets ------------------------------------------------------
-    auto file_menu =
-        component::Menu(items, selected, offset) | component::BorderRounded;
+    auto file_menu = component::Menu(items) | component::BorderRounded;
     component::Label status_label{status};
 
     auto& rows = root.h_split(85);  // rows[0] menu, rows[1] status line
@@ -86,7 +83,7 @@ int main() {
         if(!event) continue;
         if(event.kind == input::EventKind::Quit) break;
 
-        Cmd                resolved{};
+        Cmd resolved{};
         input::ChordResult result = input::ChordResult::NoMatch;
 
         if(event.kind == input::EventKind::Tick) {
@@ -102,24 +99,24 @@ int main() {
         } else if(result == input::ChordResult::Matched) {
             switch(resolved) {
                 case Cmd::GotoTop:
-                    selected = 0;
-                    status   = "gg -> jumped to top";
+                    file_menu.selection = 0;
+                    status = "gg -> jumped to top";
                     break;
                 case Cmd::GotoBottom:
-                    selected = static_cast<int>(items.size()) - 1;
-                    status   = "G -> jumped to bottom";
+                    file_menu.selection = static_cast<int>(items.size()) - 1;
+                    status = "G -> jumped to bottom";
                     break;
                 case Cmd::DeleteItem:
                     if(!items.empty()) {
-                        items.erase(items.begin() + selected);
-                        selected = std::clamp(
-                            selected, 0, static_cast<int>(items.size()) - 1);
+                        items.erase(items.begin() + file_menu.selection);
+                        file_menu.selection =
+                            std::clamp(file_menu.selection,
+                                       0,
+                                       static_cast<int>(items.size()) - 1);
                     }
                     status = "dd -> deleted item";
                     break;
-                case Cmd::Save:
-                    status = "^K^S -> saved (pretend)";
-                    break;
+                case Cmd::Save: status = "^K^S -> saved (pretend)"; break;
             }
         } else if(event.kind == input::EventKind::Key && !event.consumed) {
             // NoMatch here means feed() has definitively decided this key
@@ -129,11 +126,8 @@ int main() {
             // bindings live here, same as the plain switch(event) in the
             // other examples.
             switch(event) {
-                case 'q':
-                    terminal.request_quit();
-                    break;
-                default:
-                    break;
+                case 'q': terminal.request_quit(); break;
+                default: break;
             }
         }
     }

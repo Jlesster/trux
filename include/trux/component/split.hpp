@@ -5,6 +5,7 @@
 
 #pragma once
 #include <algorithm>
+#include <concepts>
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -17,7 +18,8 @@ namespace trux::component {
 
 /// A binary tree of components occupying a shared area, where exactly
 /// one leaf is "active" at a time. Starts as a single leaf (the
-/// `initial` component passed to the constructor); split_v()/split_h()
+/// `initial` component passed to the constructor), or empty if
+/// default-constructed (see empty()/reset()); split_v()/split_h()
 /// turn the active leaf into an internal node with two children,
 /// growing the tree. focus_next()/focus_prev() (or the key predicates
 /// set via set_focus_next_key()/set_focus_prev_key()) move which leaf
@@ -35,16 +37,37 @@ struct Split {
     /// focus_prev() from within handle() (see set_focus_next_key()).
     using KeyPredicate = std::function<bool(const input::Event&)>;
 
+    /// Constructs an empty Split: it draws nothing and consumes no
+    /// events until reset() (or assignment from a populated Split, or
+    /// split_v()/split_h(), which seed an empty Split's root).
+    Split() = default;
+
     /// Constructs a Split containing just `initial` as its one
     /// (active) leaf.
-    template <ComponentType T> explicit Split(T initial) {
+    template <ComponentType T>
+        requires(!std::same_as<std::remove_cvref_t<T>, Split>)
+    explicit Split(T initial) {
+        reset(std::move(initial));
+    }
+
+    /// Discards the whole tree and makes `initial` its single active leaf.
+    template <ComponentType T>
+    void reset(T initial) {
+        m_root = Node{};
         m_root.leaf = std::make_unique<ComponentWrapper<T>>(std::move(initial));
         m_root.active_here = true;
+    }
+
+    /// Whether the Split holds no components at all.
+    [[nodiscard]]
+    bool empty() const noexcept {
+        return !m_root.leaf && !m_root.first;
     }
 
     /// Recursively lays out and builds every leaf in the tree within
     /// `area`, splitting the area at each internal node per its axis/ratio.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
+        if(empty()) return;
         build_node(m_root, area, cmd);
     }
 
@@ -65,6 +88,7 @@ struct Split {
     /// Returns whether the event was consumed.
     [[nodiscard]]
     bool handle(const input::Event& event) {
+        if(empty()) return false;
         if(m_next_pred && m_next_pred(event)) {
             focus_next();
             return true;
@@ -86,12 +110,14 @@ struct Split {
 
     /// Splits the active leaf vertically (side by side), placing
     /// `content` in the new second pane and making it active.
-    template <ComponentType T> void split_v(T content) {
+    template <ComponentType T>
+    void split_v(T content) {
         split(layout::Axis::Vertical, std::move(content));
     }
     /// Splits the active leaf horizontally (stacked), placing
     /// `content` in the new second pane and making it active.
-    template <ComponentType T> void split_h(T content) {
+    template <ComponentType T>
+    void split_h(T content) {
         split(layout::Axis::Horizontal, std::move(content));
     }
 
@@ -100,6 +126,7 @@ struct Split {
     /// the promoted subtree's leftmost leaf active. A no-op if the
     /// active leaf is the tree's sole root (has no parent to promote into).
     void close_active() {
+        if(empty()) return;
         auto* active = find_active(m_root);
         if(!active) return;
         auto* parent = find_parent(m_root, active);
@@ -109,7 +136,7 @@ struct Split {
             (parent->first.get() == active) ? parent->second : parent->first;
 
         Node promoted = std::move(*survivor_ptr);
-        *parent       = std::move(promoted);
+        *parent = std::move(promoted);
 
         clear_active(m_root);
         if(auto* leaf = leftmost_leaf(*parent)) leaf->active_here = true;
@@ -121,13 +148,13 @@ private:
     /// subtrees split along `axis` at `ratio`.
     struct Node {
         std::unique_ptr<ComponentBase> leaf;
-        layout::Axis                   axis{};
+        layout::Axis axis{};
         /// Fraction of the area given to `first` (0.0-1.0).
-        float                          ratio{0.5f};
-        std::unique_ptr<Node>          first, second;
+        float ratio{0.5f};
+        std::unique_ptr<Node> first, second;
         /// Whether this leaf is the currently active one. Only
         /// meaningful (and exclusive across the tree) for leaves.
-        bool                           active_here{false};
+        bool active_here{false};
 
         /// Whether this node is a leaf (holds a component directly)
         /// rather than an internal split node.
@@ -137,7 +164,7 @@ private:
         }
     };
 
-    Node         m_root;
+    Node m_root;
     KeyPredicate m_next_pred;
     KeyPredicate m_prev_pred;
 
@@ -145,12 +172,17 @@ private:
     /// `axis`, keeping its existing component in the first child and
     /// placing `content` in a new second child, which becomes active.
     /// A no-op if there is no active leaf (shouldn't normally happen).
-    template <ComponentType T> void split(layout::Axis axis, T content) {
+    template <ComponentType T>
+    void split(layout::Axis axis, T content) {
+        if(empty()) {
+            reset(std::move(content));
+            return;
+        }
         auto* target = find_active(m_root);
         if(!target || !target->is_leaf()) return;
 
-        auto first         = std::make_unique<Node>();
-        first->leaf        = std::move(target->leaf);
+        auto first = std::make_unique<Node>();
+        first->leaf = std::move(target->leaf);
         first->active_here = false;
 
         auto second = std::make_unique<Node>();
@@ -158,24 +190,23 @@ private:
             std::make_unique<ComponentWrapper<T>>(std::move(content));
         second->active_here = true;
 
-        target->leaf   = nullptr;
-        target->axis   = axis;
-        target->ratio  = 0.5f;
-        target->first  = std::move(first);
+        target->leaf = nullptr;
+        target->axis = axis;
+        target->ratio = 0.5f;
+        target->first = std::move(first);
         target->second = std::move(second);
     }
 
     /// Recursively builds `n`: if it's a leaf, builds its component
     /// directly into `area`; otherwise splits `area` per `n.axis`/
     /// `n.ratio` and recurses into both children.
-    void build_node(const Node&                  n,
-                    layout::Region               area,
+    void build_node(const Node& n, layout::Region area,
                     renderer::DrawCommandBuffer& cmd) const {
         if(n.is_leaf()) {
             n.leaf->build(area, cmd);
             return;
         }
-        int   percent = static_cast<int>(n.ratio * 100.0f);
+        int percent = static_cast<int>(n.ratio * 100.0f);
         auto& s = (n.axis == layout::Axis::Vertical) ? area.v_split(percent)
                                                      : area.h_split(percent);
 
@@ -215,11 +246,12 @@ private:
     /// tree's leaves in traversal order, wrapping around. A no-op if
     /// fewer than two leaves exist.
     void move_active(int dir) {
+        if(empty()) return;
         std::vector<Node*> leaves;
         collect_leaves(m_root, leaves);
         if(leaves.size() < 2) return;
 
-        auto   it = std::find_if(leaves.begin(), leaves.end(), [](Node* n) {
+        auto it = std::find_if(leaves.begin(), leaves.end(), [](Node* n) {
             return n->active_here;
         });
         size_t idx =

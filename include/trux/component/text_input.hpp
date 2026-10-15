@@ -16,28 +16,42 @@
 #include <trux/renderer/draw_command_buffer.hpp>
 #include <trux/style/style.hpp>
 #include <trux/util/util.hpp>
+#include <utility>
 
 namespace trux::component {
 
-/// A single-line text field editing an external `value` string with
-/// an external `cursor` byte offset, both kept by reference. Handles
+/// A single-line text field. It owns its `value` string and `cursor`
+/// byte offset as plain public fields, so `input.value == "x"` and
+/// `input.cursor = 0` work directly and the type can be a struct
+/// member or sit embedded in another component (see Dialog). Handles
 /// UTF-8 decoding for cursor movement/display width, horizontally
 /// scrolls its view to keep the cursor visible when `value` is wider
 /// than the component, and renders the cursor as a styled cell over
 /// the character it's on (or a trailing space at end-of-text).
 struct TextInput {
-    /// Binds the field to external `value`/`cursor` storage, kept by reference.
-    TextInput(std::string& value, int& cursor) : value(value), cursor(cursor) {}
+    TextInput() = default;
 
-    std::string& value;
+    /// Starts with `initial` as the text and the cursor at its end.
+    explicit TextInput(std::string initial)
+        : value(std::move(initial)),
+          cursor(static_cast<int>(value.size())) {}
+
+    /// Replaces the text and moves the cursor to its end.
+    void set_value(std::string text) {
+        value = std::move(text);
+        cursor = static_cast<int>(value.size());
+    }
+
+    /// The text being edited.
+    std::string value;
     /// Byte offset into `value` where the cursor sits; clamped to a
-    /// valid UTF-8 boundary during build().
-    int&         cursor;
+    /// valid position during build() (hence mutable).
+    mutable int cursor = 0;
 
     ComponentFlags flags{};
     /// Style used to draw the cell the cursor is over.
-    style::Style   cursor_style{style::Style::Reverse};
-    style::Color   border_color{255, 255, 255, 255};
+    style::Style cursor_style{style::Style::Reverse};
+    style::Color border_color{255, 255, 255, 255};
 
     /// Byte offset of the first character in the scrolled-into-view
     /// window, recomputed each build() to keep the cursor visible.
@@ -75,9 +89,9 @@ struct TextInput {
         else {
             int col = col_width(m_view_start, cursor);
             if(col >= w) {
-                int excess  = col - w + 1;
+                int excess = col - w + 1;
                 int dropped = 0;
-                int i       = m_view_start;
+                int i = m_view_start;
                 while(dropped < excess && i < cursor) {
                     auto decoded = util::decode_utf8(
                         std::string_view(value).substr(static_cast<size_t>(i)));
@@ -95,7 +109,7 @@ struct TextInput {
             auto decoded = util::decode_utf8(
                 std::string_view(value).substr(static_cast<size_t>(end)));
             char32_t cp = decoded ? decoded->first : U'?';
-            int      gw = std::max(1, util::glyph_width(cp));
+            int gw = std::max(1, util::glyph_width(cp));
             if(col + gw > w) break;
             col += gw;
             end = util::next_boundary(value, end);
@@ -103,18 +117,15 @@ struct TextInput {
 
         std::string_view visible{value.data() + m_view_start,
                                  static_cast<size_t>(end - m_view_start)};
-        auto             pos        = content.position();
-        int              cursor_col = col_width(m_view_start, cursor);
+        auto pos = content.position();
+        int cursor_col = col_width(m_view_start, cursor);
         if(cursor <= m_view_start) {
             cmd.push(renderer::DrawText{pos, " ", cursor_style});
-            cmd.push(renderer::DrawText{
-                {pos.x + 1, pos.y},
-                visible
-            });
+            cmd.push(renderer::DrawText{{pos.x + 1, pos.y}, visible});
         } else {
-            size_t split  = static_cast<size_t>(cursor - m_view_start);
-            auto   before = visible.substr(0, std::min(split, visible.size()));
-            auto   after  = visible.substr(std::min(split, visible.size()));
+            size_t split = static_cast<size_t>(cursor - m_view_start);
+            auto before = visible.substr(0, std::min(split, visible.size()));
+            auto after = visible.substr(std::min(split, visible.size()));
 
             cmd.push(renderer::DrawText{pos, before});
             auto cursor_pos = pos;
@@ -123,18 +134,16 @@ struct TextInput {
             if(after.empty()) {
                 cmd.push(renderer::DrawText{cursor_pos, " ", cursor_style});
             } else {
-                int  glyph_len = util::next_boundary(after, 0);
-                auto decoded   = util::decode_utf8(after);
-                int  gw = decoded
-                              ? std::max(1, util::glyph_width(decoded->first))
-                              : 1;
+                int glyph_len = util::next_boundary(after, 0);
+                auto decoded = util::decode_utf8(after);
+                int gw = decoded
+                             ? std::max(1, util::glyph_width(decoded->first))
+                             : 1;
 
                 cmd.push(renderer::DrawText{
                     cursor_pos, after.substr(0, glyph_len), cursor_style});
-                cmd.push(renderer::DrawText{
-                    {cursor_pos.x + gw, cursor_pos.y},
-                    after.substr(glyph_len)
-                });
+                cmd.push(renderer::DrawText{{cursor_pos.x + gw, cursor_pos.y},
+                                            after.substr(glyph_len)});
             }
         }
     }
@@ -169,9 +178,7 @@ struct TextInput {
             case input::Key::Right:
                 cursor = util::next_boundary(value, cursor);
                 return true;
-            case input::Key::Home:
-                cursor = 0;
-                return true;
+            case input::Key::Home: cursor = 0; return true;
             case input::Key::End:
                 cursor = static_cast<int>(value.size());
                 return true;
@@ -194,8 +201,7 @@ struct TextInput {
                             static_cast<size_t>(end - cursor));
                 return true;
             }
-            default:
-                break;
+            default: break;
         }
         if(event.mods.has(input::Mod::Ctrl) || event.mods.has(input::Mod::Alt))
             return false;

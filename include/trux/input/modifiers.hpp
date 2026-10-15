@@ -11,10 +11,10 @@ namespace trux::input {
 
 /// A single keyboard modifier, as a distinct bit.
 enum class Mod : uint8_t {
-    None  = 0,
+    None = 0,
     Shift = 1 << 0,
-    Alt   = 1 << 1,
-    Ctrl  = 1 << 2,
+    Alt = 1 << 1,
+    Ctrl = 1 << 2,
     Super = 1 << 3,
 };
 
@@ -74,14 +74,14 @@ constexpr Modifiers operator|(Modifiers lhs, Mod rhs) noexcept {
 /// Packs `mod` into the high byte of `code`, producing the combined
 /// char32_t representation used by Event::operator char32_t().
 [[nodiscard]]
-constexpr char32_t operator|(char32_t code, Mod mod) noexcept {
+constexpr char32_t operator|(Mod mod, char32_t code) noexcept {
     return code | (static_cast<char32_t>(with(mod).value) << 24);
 }
 
 /// Packs `mods` into the high byte of `code`, producing the combined
 /// char32_t representation used by Event::operator char32_t().
 [[nodiscard]]
-constexpr char32_t operator|(char32_t code, Modifiers mods) noexcept {
+constexpr char32_t operator|(Modifiers mods, char32_t code) noexcept {
     return code | (static_cast<char32_t>(mods.value) << 24);
 }
 

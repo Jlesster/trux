@@ -12,7 +12,7 @@ int main() {
     // create the renderer and root rect
     auto terminal = Terminal();
     auto renderer = renderer::Renderer(terminal.size());
-    auto root     = layout::init(terminal.size());
+    auto root = layout::init(terminal.size());
 
     // create an input object for polling and to plug into
     // a switch statement handling key and modifier cases
@@ -23,48 +23,29 @@ int main() {
     if(auto result = terminal.enable_raw_mode(); !result) return 1;
 
     // vector examples for lists
-    std::vector<std::string> dir_names    = {"😀", "╭", "界"};
+    std::vector<std::string> dir_names = {"😀", "╭", "界"};
     std::vector<std::string> drop_options = {"yes", "no", "maybe"};
-    std::vector<std::string> flag_names   = {
+    std::vector<std::string> flag_names = {
         "-Wall", "-Werror", "-lpthread", "-O3"};
     std::vector<bool> flag_checked(flag_names.size(), false);
 
     // split vairables can be assigned either way
-    auto& split    = root.h_split(20);
+    auto& split = root.h_split(20);
     auto& subsplit = split[1].v_split(50);
     // auto& [split1, split2] = root.h_split(20);
 
-    // menu selection
-    int menu_selection1 = 0;
-    int menu_selection2 = 0;
+    // creating widgets as variables and giving attribs. selection, cursor
+    // and scroll offset live inside the widgets themselves
+    // (widget1.selection, widget3.cursor, ...)
+    auto widget2 = component::Menu(drop_options);
+    auto widget1 = component::Menu(dir_names) | component::BorderRounded;
 
-    // scroll offset
-    int menu_offset1 = 0;
-    int menu_offset2 = 0;
-
-    int checkbox_cursor = 0;
-    int checkbox_offset = 0;
-
-    // creating widgets as variables and giving attribs
-    auto widget2 = component::Menu(drop_options, menu_selection2, menu_offset2);
-    auto widget1 = component::Menu(dir_names, menu_selection1, menu_offset1) |
+    auto widget3 = component::Checkbox(flag_names, flag_checked) |
                    component::BorderRounded;
 
-    auto widget3 =
-        component::Checkbox(
-            flag_names, flag_checked, checkbox_cursor, checkbox_offset) |
-        component::BorderRounded;
-
-    bool                 dialog_open   = false;
-    std::string          rename_value  = "main.cpp";
-    int                  rename_cursor = rename_value.size();
-    component::TextInput input_modal{rename_value, rename_cursor};
-
-    component::Dialog dialog{
-        .title   = "Rename",
-        .open    = &dialog_open,
-        .content = input_modal,
-    };
+    // the dialog embeds its own text field: dialog.input.value
+    component::Dialog dialog{.title = "Rename"};
+    dialog.input.set_value("main.cpp");
 
     // giving widgets attribs after creation
     widget2 |= component::BorderRounded;
@@ -81,7 +62,7 @@ int main() {
             renderer.push(widget1, split[0]);
             renderer.push(widget2, subsplit[0]);
             renderer.push(widget3, subsplit[1]);
-            if(dialog_open) renderer.push(dialog, renderer.region(), true);
+            if(dialog.open) renderer.push(dialog, renderer.region(), true);
             // OR
             // renderer.push(widget1, split1);
             // renderer.push(widget1, split2);
@@ -98,15 +79,10 @@ int main() {
             using namespace trux::input;
             if(event.kind == EventKind::Quit) break;
             switch(event) {
-                case 'q':
-                    terminal.request_quit();
-                    break;
-                case 'r':
-                    dialog_open = !dialog_open;
-                    break;
+                case 'q': terminal.request_quit(); break;
+                case 'r': dialog.open = !dialog.open; break;
 
-                default:
-                    break;
+                default: break;
             }
         }
     }

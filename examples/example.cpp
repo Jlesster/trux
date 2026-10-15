@@ -11,9 +11,9 @@ using namespace trux;
 // FTXUI compiler-config demo: a left column for single/multi-select and a
 // right column for freeform/list/paragraph content, plus a modal dialog.
 int main() {
-    auto         terminal = Terminal();
-    auto         renderer = renderer::Renderer(terminal.size());
-    auto         root     = layout::init(terminal.size());
+    auto terminal = Terminal();
+    auto renderer = renderer::Renderer(terminal.size());
+    auto root = layout::init(terminal.size());
     input::Input input;
 
     if(auto result = terminal.init(); !result) return 1;
@@ -27,74 +27,51 @@ int main() {
     auto& rows = root.h_split(15);     // rows[0] top strip, rows[1] body
     auto& cols = rows[1].v_split(35);  // cols[0] left, cols[1] right
 
-    auto& left_rows  = cols[0].h_split(50);  // compiler / flags
+    auto& left_rows = cols[0].h_split(50);   // compiler / flags
     auto& right_rows = cols[1].h_split(25);  // build type strip
 
     auto& right_mid = right_rows[1].h_split(33);  // executable name
     auto& right_low = right_mid[1].h_split(50);   // log list / notes
 
     // --- state ----------------------------------------------------------
-    std::vector<std::string> compilers         = {"gcc", "clang", "emcc"};
-    int                      compiler_selected = 0;
-    int                      compiler_offset   = 0;
+    std::vector<std::string> compilers = {"gcc", "clang", "emcc"};
 
     std::vector<std::string> flag_names = {
         "-Wall", "-Werror", "-lpthread", "-O3"};
     std::vector<bool> flag_checked = {true, false, false, false};
-    int               flag_cursor  = 0;
-    int               flag_offset  = 0;
 
     std::vector<std::string> build_types = {
         "Debug", "Release", "RelWithDebInfo"};
-    int dropdown_offset = 0;
-
-    std::string executable_name   = "pkgmgr";
-    int         executable_cursor = executable_name.size();
 
     std::vector<std::string> build_log = {
         "cloned source", "configured", "ready to build"};
-    int build_log_scroll = 0;
-
-    std::string notes =
-        "Per-package build configuration. Space toggles a flag, Tab moves "
-        "focus between panels, Enter opens the rename dialog.";
-    int notes_scroll = 0;
 
     // --- widgets ----------------------------------------------------------
     component::Label title{"trux component gallery"};
 
-    auto compiler_menu =
-        component::Menu(compilers, compiler_selected, compiler_offset) |
-        component::BorderRounded;
+    auto compiler_menu = component::Menu(compilers) | component::BorderRounded;
 
-    auto flag_checkbox =
-        component::Checkbox(
-            flag_names, flag_checked, flag_cursor, flag_offset) |
-        component::BorderRounded;
+    auto flag_checkbox = component::Checkbox(flag_names, flag_checked) |
+                         component::BorderRounded;
 
-    auto build_dropdown = component::Dropdown(build_types, dropdown_offset) |
-                          component::BorderSingle;
+    auto build_dropdown =
+        component::Dropdown(build_types) | component::BorderSingle;
 
-    component::TextInput executable_input{executable_name, executable_cursor};
+    component::TextInput executable_input{"pkgmgr"};
     executable_input |= component::BorderSingle;
 
-    auto log_list =
-        component::List(build_log, build_log_scroll) | component::BorderSingle;
+    auto log_list = component::List(build_log) | component::BorderSingle;
 
-    component::Paragraph notes_paragraph{notes, notes_scroll};
+    component::Paragraph notes_paragraph{
+        "Per-package build configuration. Space toggles a flag, Tab moves "
+        "focus between panels, Enter opens the rename dialog."};
     notes_paragraph |= component::BorderSingle;
 
     // --- modal dialog: rename the executable -------------------------
-    bool                 dialog_open   = false;
-    std::string          rename_value  = executable_name;
-    int                  rename_cursor = rename_value.size();
-    component::TextInput rename_input{rename_value, rename_cursor};
-
-    component::Dialog dialog{
-        .title   = "Rename executable",
-        .open    = &dialog_open,
-        .content = rename_input,
-    };
+    component::Dialog dialog{.title = "Rename executable"};
+    // the dialog's input is its own copy of the text; push it back into
+    // the main field when the user confirms with Enter.
+    dialog.on_confirm = [&] { executable_input.set_value(dialog.input.value); };
     dialog |= component::BorderRounded;
 
     while(!terminal.should_quit()) {
@@ -111,7 +88,7 @@ int main() {
             renderer.push(log_list, right_low[0]);
             renderer.push(notes_paragraph, right_low[1]);
 
-            if(dialog_open)
+            if(dialog.open)
                 renderer.push(dialog, renderer.region(), /*modal=*/true);
         }
         renderer.end_draw();
@@ -126,22 +103,13 @@ int main() {
             if(event.consumed) continue;
 
             switch(event) {
-                case 'q':
-                    terminal.request_quit();
-                    break;
+                case 'q': terminal.request_quit(); break;
                 case input::Key::Enter:
-                    dialog_open   = true;
-                    rename_value  = executable_name;
-                    rename_cursor = rename_value.size();
+                    dialog.open = true;
+                    dialog.input.set_value(executable_input.value);
                     break;
-                default:
-                    break;
+                default: break;
             }
         }
     }
-
-    // note: rename_value is a separate copy edited by the dialog's
-    // TextInput; wiring it back into executable_name on close needs a
-    // per-frame open/closed edge check, which is an app-level concern
-    // left out of this demo (not something trux itself provides).
 }

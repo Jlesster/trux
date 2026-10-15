@@ -13,30 +13,36 @@
 #include <algorithm>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace trux::component {
 
 /// Displays `text` word-wrapped to the component's width and
 /// vertically scrollable via Up/Down. Rewraps on every build() (to
-/// the current width), so `text` and `scroll_offset` may change
-/// externally between frames.
+/// the current width), so `text` and `offset` may change between
+/// frames. Both are plain owned fields, so a default-constructed
+/// Paragraph can sit in a struct and be filled in later
+/// (`ui.notes.text = "..."`).
 struct Paragraph {
-    /// Binds the paragraph to external `text`/`scroll_offset` storage, by reference.
-    Paragraph(std::string& text, int& scroll_offset)
-        : text(text), scroll_offset(scroll_offset) {}
+    Paragraph() = default;
 
-    std::string& text;
+    /// Constructs a paragraph showing `text` (copied).
+    explicit Paragraph(std::string text)
+        : text(std::move(text)) {}
+
+    /// The text to wrap and display.
+    std::string text;
     /// Index of the first visible wrapped line; clamped during build().
-    int&         scroll_offset;
+    mutable int offset = 0;
 
-    style::Style   text_style{style::Style::None};
+    style::Style text_style{style::Style::None};
     ComponentFlags flags{};
-    style::Color   border_color{255, 255, 255, 255};
+    style::Color border_color{255, 255, 255, 255};
 
     /// Content height from the most recent build(); reserved for
     /// callers wanting to know the visible line count.
-    mutable int                      last_height{0};
+    mutable int last_height{0};
     /// Word-wrapped lines from the most recent build(), cached so
     /// callers can inspect what was actually rendered.
     mutable std::vector<std::string> m_lines;
@@ -54,18 +60,18 @@ struct Paragraph {
         if(w <= 0 || h <= 0) return;
         last_height = h;
 
-        m_lines        = wrap(text, w);
+        m_lines = wrap(text, w);
         int max_offset = std::max(0, static_cast<int>(m_lines.size()) - h);
-        scroll_offset  = std::clamp(scroll_offset, 0, max_offset);
+        offset = std::clamp(offset, 0, max_offset);
 
-        auto   pos   = content.position();
-        size_t begin = static_cast<size_t>(scroll_offset);
-        size_t end   = std::min(m_lines.size(), begin + static_cast<size_t>(h));
+        auto pos = content.position();
+        size_t begin = static_cast<size_t>(offset);
+        size_t end = std::min(m_lines.size(), begin + static_cast<size_t>(h));
         for(size_t i = begin; i < end; i++) {
             cmd.push(renderer::DrawText{
                 .position = pos,
-                .text     = m_lines[i],
-                .style    = text_style,
+                .text = m_lines[i],
+                .style = text_style,
             });
             pos.y++;
         }
@@ -77,14 +83,9 @@ struct Paragraph {
     [[nodiscard]]
     bool handle(const input::Event& event) {
         switch(event.code) {
-            case input::Key::Up:
-                scroll_offset = std::max(0, scroll_offset - 1);
-                return true;
-            case input::Key::Down:
-                scroll_offset++;
-                return true;
-            default:
-                return false;
+            case input::Key::Up: offset = std::max(0, offset - 1); return true;
+            case input::Key::Down: offset++; return true;
+            default: return false;
         }
     }
 
@@ -95,8 +96,8 @@ private:
     [[nodiscard]]
     static std::vector<std::string> wrap(const std::string& text, int width) {
         std::vector<std::string> lines;
-        std::istringstream       words(text);
-        std::string              word, line;
+        std::istringstream words(text);
+        std::string word, line;
         while(words >> word) {
             if(line.empty()) line = word;
             else if(line.size() + 1 + word.size() <= static_cast<size_t>(width))
