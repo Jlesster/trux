@@ -88,8 +88,7 @@ void color_reaches_cells_test() {
 void color_checkbox_glyph_test() {
     renderer::Renderer renderer({10, 2});
     std::vector<std::string> items{"abc"};
-    std::vector<bool> checked{false};
-    auto cb = c::Checkbox(items, checked) | c::Color({1, 2, 3});
+    auto cb = c::Checkbox(items) | c::Color({1, 2, 3});
     renderer.begin_draw();
     renderer.push(cb, layout::init({10, 2}));
     renderer.end_draw();

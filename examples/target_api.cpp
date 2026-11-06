@@ -27,21 +27,21 @@ int main() {
     std::vector<std::string> drop_options = {"yes", "no", "maybe"};
     std::vector<std::string> flag_names = {
         "-Wall", "-Werror", "-lpthread", "-O3"};
-    std::vector<bool> flag_checked(flag_names.size(), false);
 
     // split vairables can be assigned either way
     auto& split = root.h_split(20);
     auto& subsplit = split[1].v_split(50);
     // auto& [split1, split2] = root.h_split(20);
 
-    // creating widgets as variables and giving attribs. selection, cursor
-    // and scroll offset live inside the widgets themselves
+    // creating widgets as variables and giving attribs. selection, cursor,
+    // scroll offset and checked state live inside the widgets themselves
     // (widget1.selection, widget3.cursor, ...)
     auto widget2 = component::Menu(drop_options);
     auto widget1 = component::Menu(dir_names) | component::BorderRounded;
 
-    auto widget3 = component::Checkbox(flag_names, flag_checked) |
-                   component::BorderRounded;
+    // checked state lives inside the checkbox too: widget3.is_checked(i),
+    // widget3.set_checked(i, true), widget3.toggle(i)
+    auto widget3 = component::Checkbox(flag_names) | component::BorderRounded;
 
     // the dialog embeds its own text field: dialog.input.value
     component::Dialog dialog{.title = "Rename"};

@@ -1,9 +1,4 @@
-#include "trux/component/checkbox.hpp"
-#include "trux/component/component.hpp"
-#include "trux/component/dropdown.hpp"
-#include "trux/component/paragraph.hpp"
-
-#include <trux/core.hpp>
+#include "trux/core.hpp"
 
 using namespace trux;
 
@@ -38,7 +33,6 @@ int main() {
 
     std::vector<std::string> flag_names = {
         "-Wall", "-Werror", "-lpthread", "-O3"};
-    std::vector<bool> flag_checked = {true, false, false, false};
 
     std::vector<std::string> build_types = {
         "Debug", "Release", "RelWithDebInfo"};
@@ -51,8 +45,9 @@ int main() {
 
     auto compiler_menu = component::Menu(compilers) | component::BorderRounded;
 
-    auto flag_checkbox = component::Checkbox(flag_names, flag_checked) |
-                         component::BorderRounded;
+    auto flag_checkbox =
+        component::Checkbox(flag_names) | component::BorderRounded;
+    flag_checkbox.set_checked(0, true);  // -Wall on by default
 
     auto build_dropdown =
         component::Dropdown(build_types) | component::BorderSingle;

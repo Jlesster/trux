@@ -200,11 +200,9 @@ void menu_selection_clamps_when_emptied_test() {
 
 void checkbox_cursor_clamps_when_items_shrink_test() {
     std::vector<std::string> items = {"a", "b", "c"};
-    std::vector<bool> checked(3, false);
-    component::Checkbox box(items, checked);
+    component::Checkbox box(items);
     box.cursor = 2;
     items.resize(1);
-    checked.resize(1);
     assert(box.handle(input::Event::key(input::Key::Down)));
     assert(box.cursor == 0);
 }
@@ -322,23 +320,69 @@ void menu_set_style_beyond_size_test() {
 
 void checkbox_toggle_test() {
     std::vector<std::string> items = {"-Wall", "-O3"};
-    std::vector<bool> checked = {false, false};
-    component::Checkbox box(items, checked);
+    component::Checkbox box(items);
+    assert(!box.is_checked(0) && !box.is_checked(1));
 
     assert(box.handle(input::Event::key(static_cast<char32_t>(' '))));
-    assert(checked[0] && !checked[1]);
+    assert(box.is_checked(0) && !box.is_checked(1));
 
     assert(box.handle(input::Event::key(input::Key::Down)));
     assert(box.cursor == 1);
     assert(box.handle(input::Event::key(static_cast<char32_t>(' '))));
-    assert(checked[1]);
+    assert(box.is_checked(1));
+
+    // Space again unchecks.
+    assert(box.handle(input::Event::key(static_cast<char32_t>(' '))));
+    assert(!box.is_checked(1));
+}
+
+void checkbox_accessors_test() {
+    std::vector<std::string> items = {"a", "b", "c"};
+    component::Checkbox box(items);
+    assert(box.checked_count() == 0);
+
+    box.set_checked(2, true);
+    assert(box.is_checked(2) && !box.is_checked(0) && !box.is_checked(1));
+    assert(box.checked_count() == 1);
+
+    assert(box.toggle(0));  // returns the new state
+    assert(!box.toggle(0));
+    assert(!box.is_checked(0));
+
+    // Out-of-range indices read as unchecked and are ignored by writers.
+    assert(!box.is_checked(99));
+    box.set_checked(99, true);
+    assert(!box.is_checked(99));
+    assert(!box.toggle(99));
+
+    box.reset_checked();
+    assert(box.checked_count() == 0);
+}
+
+void checkbox_state_follows_items_test() {
+    std::vector<std::string> items = {"a", "b"};
+    component::Checkbox box(items);
+    box.set_checked(1, true);
+
+    // New items start unchecked and can be toggled without a rebind.
+    items.push_back("c");
+    assert(!box.is_checked(2));
+    assert(box.toggle(2));
+    assert(box.is_checked(1) && box.is_checked(2));
+
+    // Rebinding keeps state; reset_checked() clears it.
+    std::vector<std::string> other = {"x", "y", "z"};
+    box.bind(other);
+    assert(box.size() == 3 && box.is_checked(1) && box.is_checked(2));
+    box.reset_checked();
+    assert(box.checked_count() == 0);
 }
 
 void checkbox_render_test() {
     renderer::Renderer renderer({20, 4});
     std::vector<std::string> items = {"a", "b"};
-    std::vector<bool> checked = {true, false};
-    component::Checkbox box(items, checked);
+    component::Checkbox box(items);
+    box.set_checked(0, true);
 
     renderer.begin_draw();
     renderer.push(box, layout::init({20, 4}));
@@ -443,12 +487,11 @@ void struct_of_components_test() {
     UiComponents ui;  // must compile: no implicitly-deleted default ctor
 
     std::vector<std::string> items = {"a", "b"};
-    std::vector<bool> checked = {false, false};
 
     ui.title.text = "hello";
     ui.menu = component::Menu(items) | component::BorderRounded;
     ui.log = component::List(items);
-    ui.flags = component::Checkbox(items, checked);
+    ui.flags = component::Checkbox(items);
     ui.build_type = component::Dropdown(items);
     ui.name.set_value("x");
     ui.notes.text = "some words here";
@@ -540,6 +583,9 @@ int main() {
     test::run("menu set_style past size", menu_set_style_beyond_size_test);
 
     test::run("checkbox toggles with space", checkbox_toggle_test);
+    test::run("checkbox accessors", checkbox_accessors_test);
+    test::run("checkbox state follows items",
+              checkbox_state_follows_items_test);
     test::run("checkbox renders glyphs", checkbox_render_test);
     test::run("checkbox unbound ignores input", checkbox_unbound_test);
 

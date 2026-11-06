@@ -26,33 +26,36 @@
 namespace trux::component {
 
 /// A vertically-scrollable checklist: each item shows a `[x]`/`[ ]`
-/// glyph reflecting the corresponding entry in the bound `checked`
-/// vector, with `cursor` indicating which row Up/Down/j/k move and
-/// Space toggles.
+/// glyph reflecting its checked state, with `cursor` indicating which
+/// row Up/Down/j/k move and Space toggles.
 ///
 /// A default-constructed Checkbox is unbound: it draws only its border
-/// and consumes no events. The item range and the `checked` vector are
-/// model data and stay external: both are held by pointer and must
-/// outlive the widget. `checked` should be the same length as the
-/// items; rows past its end draw as unchecked and can't be toggled.
-/// `cursor` and `offset` are plain owned fields.
+/// and consumes no events. The item range is model data and stays
+/// external: it is held by pointer and must outlive the widget. The
+/// checked state is owned by the checkbox and sized to the item count
+/// (grown on bind() and on demand); read and write it through
+/// is_checked(), set_checked() and toggle(). `cursor` and `offset` are
+/// plain owned fields.
 struct Checkbox {
     Checkbox() = default;
 
-    /// Binds the checkbox to an external `items` range and `checked`
-    /// vector. `proj` maps an item to something convertible to
-    /// std::string_view.
+    /// Binds the checkbox to an external `items` range, with every item
+    /// initially unchecked. `proj` maps an item to something
+    /// convertible to std::string_view.
     template <typename R, typename Proj = std::identity>
         requires(!std::same_as<std::remove_cvref_t<R>, Checkbox>)
-    Checkbox(R& items, std::vector<bool>& checked, Proj proj = {}) {
-        bind(items, checked, std::move(proj));
+    explicit Checkbox(R& items, Proj proj = {}) {
+        bind(items, std::move(proj));
     }
 
-    /// (Re)binds to `items` and `checked`, keeping cursor and offset.
+    /// (Re)binds to `items`, keeping cursor, offset and any existing
+    /// checked state; the state grows (unchecked) to cover new items.
+    /// Call reset_checked() afterwards if the new range is unrelated to
+    /// the old one.
     template <typename R, typename Proj = std::identity>
-    void bind(R& items, std::vector<bool>& checked_state, Proj proj = {}) {
+    void bind(R& items, Proj proj = {}) {
         view.bind(items, std::move(proj));
-        checked = &checked_state;
+        if(checked_.size() < size()) checked_.resize(size(), false);
     }
 
     /// Number of bound items; 0 while unbound.
@@ -60,8 +63,40 @@ struct Checkbox {
 
     /// Type-erased view of the bound range and projection.
     ItemView view;
-    /// Checked state, one entry per item; null while unbound.
-    std::vector<bool>* checked = nullptr;
+
+    /// Whether the item at `index` is checked. Indices past the stored
+    /// state (including out-of-range ones) read as unchecked.
+    bool is_checked(size_t index) const {
+        return index < checked_.size() && checked_[index];
+    }
+
+    /// Sets the checked state of the item at `index`, growing the
+    /// stored state (unchecked for the gap) as needed. Ignored while
+    /// `index` is beyond the bound items.
+    void set_checked(size_t index, bool value) {
+        if(index >= size()) return;
+        if(index >= checked_.size())
+            checked_.resize(std::max(size(), index + 1), false);
+        checked_[index] = value;
+    }
+
+    /// Flips the checked state of the item at `index`; returns the new
+    /// state (false if `index` is beyond the bound items).
+    bool toggle(size_t index) {
+        if(index >= size()) return false;
+        set_checked(index, !is_checked(index));
+        return is_checked(index);
+    }
+
+    /// Unchecks every item and resizes the state to the current item
+    /// count.
+    void reset_checked() { checked_.assign(size(), false); }
+
+    /// Number of checked items.
+    size_t checked_count() const {
+        return static_cast<size_t>(
+            std::count(checked_.begin(), checked_.end(), true));
+    }
 
     /// Style applied to the item under the cursor.
     style::Style cursor_style{style::Style::Italic};
@@ -118,10 +153,10 @@ struct Checkbox {
             static constexpr std::string_view glyph_on = "[x] ";
             static constexpr std::string_view glyph_off = "[ ] ";
 
-            bool on = checked && i < checked->size() && (*checked)[i];
+            bool on = is_checked(i);
             bool at_cursor = static_cast<int>(i) == cursor;
-            auto fg = (at_cursor && selection_color) ? selection_color
-                                                     : text_color;
+            auto fg =
+                (at_cursor && selection_color) ? selection_color : text_color;
             renderer::DrawText glyph{
                 .position = pos,
                 .text = on ? glyph_on : glyph_off,
@@ -166,15 +201,17 @@ struct Checkbox {
                 keep_visible();
                 return true;
 
-            case static_cast<char32_t>(' '): {
-                auto i = static_cast<size_t>(cursor);
-                if(checked && i < checked->size())
-                    (*checked)[i] = !(*checked)[i];
+            case static_cast<char32_t>(' '):
+                toggle(static_cast<size_t>(cursor));
                 return true;
-            }
 
             default: return false;
         }
     }
+
+private:
+    /// One entry per item (grown by bind()/set_checked()); may be
+    /// longer than size() if the bound range shrinks.
+    std::vector<bool> checked_;
 };
 }  // namespace trux::component
