@@ -10,7 +10,9 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <memory>
+#include <optional>
 #include <tuple>
 #include <type_traits>
 
@@ -38,8 +40,7 @@ namespace trux::component {
 /// @see Region::operator=
 /// @see ComponentWrapper
 template <typename T>
-concept ComponentType = requires(const T&                     component,
-                                 layout::Region               area,
+concept ComponentType = requires(const T& component, layout::Region area,
                                  renderer::DrawCommandBuffer& commands) {
     { component.flags } -> std::same_as<const ComponentFlags&>;
     { component.build(area, commands) } -> std::same_as<void>;
@@ -49,7 +50,8 @@ concept ComponentType = requires(const T&                     component,
 /// a `component::ComponentBase*` and owned by a Region.
 ///
 /// @tparam T A type satisfying ComponentType.
-template <ComponentType T> struct ComponentWrapper;
+template <ComponentType T>
+struct ComponentWrapper;
 
 }  // namespace trux::component
 
@@ -82,6 +84,18 @@ struct SplitKey {
 
     /// Compares keys field-by-field; used to deduplicate cached splits.
     constexpr auto operator<=>(const SplitKey&) const = default;
+};
+
+/// Passed in a SizeRequest to take every cell the parent split offers.
+inline constexpr int kFill = std::numeric_limits<int>::max();
+
+/// What a component asks of the Split its Region lives in. An unset
+/// dimension keeps the size the split would give it naturally. Values
+/// are clamped to the parent's extent; kFill means "all of it".
+struct SizeRequest {
+    std::optional<int> width;
+    std::optional<int> height;
+    constexpr bool operator==(const SizeRequest&) const = default;
 };
 
 struct RegionNode;
@@ -152,6 +166,11 @@ public:
 
     /// Position and size combined.
     Rect rect() const noexcept;
+
+    /// Rect of the root of the tree this region belongs to (the whole
+    /// terminal for the Renderer's root). The space a component may
+    /// overlay; equals rect() for a region with no parent.
+    Rect root_rect() const noexcept;
 
     /// Splits this region vertically (side by side) so the first
     /// child gets `percent` of the width and the second gets the
@@ -227,11 +246,20 @@ public:
     /// assigned component.
     ///
     /// @tparam T Any type satisfying component::ComponentType.
-    template <typename T> Region& operator=(T comp) {
+    template <typename T>
+    Region& operator=(T comp) {
         set_component(
             std::make_shared<component::ComponentWrapper<T>>(std::move(comp)));
         return *this;
     }
+
+    /// Lets the component built into this region resize it. Along the
+    /// parent split's axis the sibling absorbs the difference (and
+    /// shrinks to nothing on kFill); across it the region is simply
+    /// narrowed. The request is stored, so it survives
+    /// propagate_resize() and may be repeated every frame for free.
+    /// A no-op for regions with no parent split (e.g. the root).
+    void request_size(SizeRequest request) const;
 
     /// Renders this region's assigned component (if any) by
     /// appending draw commands to `cmd`. No-op if this region has no
@@ -239,17 +267,24 @@ public:
     void build(renderer::DrawCommandBuffer& cmd) const;
 
 private:
-    friend void   propagate_resize(Region&, Size);
+    friend void propagate_resize(Region&, Size);
     friend Region init(Size);
-    friend void   resize_all_roots(Size);
+    friend void resize_all_roots(Size);
 
     explicit Region(std::shared_ptr<RegionNode> node)
         : m_node(std::move(node)) {};
 
     void set_component(std::shared_ptr<component::ComponentBase> c);
 
+    /// Recomputes both children of `split` from the parent's rect, the
+    /// split's key and any SizeRequests held by the children.
+    static void layout_split(RegionNode& parent, const SplitKey& key,
+                             Split& split);
+    /// layout_split() for every split under `node`, recursively.
+    static void reflow(RegionNode& node);
+
     std::shared_ptr<RegionNode> m_node;
-    Rect                        m_rect;
+    Rect m_rect;
 };
 
 /// Resizes `region`'s tree in place to fit `new_size`, recomputing
@@ -311,13 +346,15 @@ namespace trux::layout {
 /// `std::get`-style accessor enabling structured bindings on Split.
 ///
 /// @tparam I Index; must be 0 (`first`) or 1 (`second`).
-template <std::size_t I> constexpr Region& get(Split& s) noexcept {
+template <std::size_t I>
+constexpr Region& get(Split& s) noexcept {
     static_assert(I < 2,
                   "Split only exposes first/second to structured binding");
     return I == 0 ? s.first : s.second;
 }
 /// @copydoc get(Split&)
-template <std::size_t I> constexpr const Region& get(const Split& s) noexcept {
+template <std::size_t I>
+constexpr const Region& get(const Split& s) noexcept {
     static_assert(I < 2,
                   "Split only exposes first/second to structured binding");
     return I == 0 ? s.first : s.second;
@@ -330,7 +367,8 @@ template <std::size_t I> constexpr const Region& get(const Split& s) noexcept {
 /// so without this overload the const overload above wins instead
 /// (being the only one an xvalue can bind to) and the bindings come
 /// out const.
-template <std::size_t I> constexpr Region& get(Split&& s) noexcept {
+template <std::size_t I>
+constexpr Region& get(Split&& s) noexcept {
     static_assert(I < 2,
                   "Split only exposes first/second to structured binding");
     return I == 0 ? s.first : s.second;
@@ -345,7 +383,8 @@ namespace std {
 template <>
 struct tuple_size<trux::layout::Split>
     : std::integral_constant<std::size_t, 2> {};
-template <std::size_t I> struct tuple_element<I, trux::layout::Split> {
+template <std::size_t I>
+struct tuple_element<I, trux::layout::Split> {
     using type = trux::layout::Region;
 };
 }  // namespace std

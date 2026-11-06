@@ -79,6 +79,26 @@ struct Dropdown {
     /// Foreground for the highlighted option while open; falls back to
     /// `text_color`.
     std::optional<style::Color> selection_color;
+    /// Height of the list while open (border included). Unset fits every
+    /// option; always clamped to the room on screen, so a long list is
+    /// capped there and scrolls. Use layout::kFill to take all of it.
+    std::optional<int> expanded_height;
+
+    /// Rows the dropdown occupies while closed: the selection line, plus
+    /// the border's top and bottom when one is set.
+    int collapsed_height() const { return active_border(flags) ? 3 : 1; }
+
+    /// Rows used while open: `expanded_height` if set, otherwise enough
+    /// for every option (plus the border rows, if any).
+    int open_height() const {
+        return expanded_height.value_or(std::max(
+            collapsed_height(),
+            static_cast<int>(size()) + (active_border(flags) ? 2 : 0)));
+    }
+
+    /// While open, Tab goes to handle() (which swallows it) instead of
+    /// moving focus away and leaving the list expanded.
+    bool captures_tab() const { return open; }
 
     /// Index of the first visible option while open; clamped during build().
     mutable int offset = 0;
@@ -97,10 +117,32 @@ struct Dropdown {
     /// if there are no options). While open, clamps `offset` and draws
     /// the visible slice of options, highlighting `selection`.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
-        auto content = area;
+        // The split always sees the closed footprint, so toggling never
+        // moves a sibling.
+        area.request_size({.height = collapsed_height()});
+
+        // Open: paint a taller frame on the overlay layer, over whatever
+        // it lands on. It grows down unless that doesn't fit and there is
+        // more room above, in which case it grows up from our bottom edge.
+        auto frame = area;
+        std::optional<renderer::OverlayScope> overlay;
+        if(open) {
+            auto [x, y] = area.position();
+            auto [w, h] = area.size();
+            auto screen = area.root_rect();
+            int want = open_height();
+            int below = screen.position.y + screen.size.height - y;
+            int above = y + h - screen.position.y;
+            bool up = want > below && above > below;
+            int rows = std::clamp(want, h, std::max(h, up ? above : below));
+            frame = layout::Region{{x, up ? y + h - rows : y}, {w, rows}};
+            overlay.emplace(cmd, frame);
+        }
+
+        auto content = frame;
         if(auto border = active_border(flags)) {
-            build_border(area, *border, cmd, border_color);
-            content = inset(area);
+            build_border(frame, *border, cmd, border_color);
+            content = inset(frame);
         }
 
         clamp();

@@ -28,7 +28,9 @@ struct layout::RegionNode {
     std::map<SplitKey, std::shared_ptr<Split>> children;
     std::shared_ptr<component::ComponentBase> component;
     std::shared_ptr<Split> active_split;
-    std::shared_ptr<RegionNode> parent;
+    std::weak_ptr<RegionNode>
+        parent;  // weak: children->split->node->parent was a cycle
+    SizeRequest request;
 };
 
 layout::Region::Region(Position pos, Size size)
@@ -40,6 +42,12 @@ layout::Region::Region()
 layout::Size layout::Region::size() const noexcept { return m_node->rect.size; }
 layout::Rect layout::Region::rect() const noexcept { return m_node->rect; }
 
+layout::Rect layout::Region::root_rect() const noexcept {
+    auto node = m_node;
+    while(auto p = node->parent.lock()) node = std::move(p);
+    return node->rect;
+}
+
 layout::Position layout::Region::position() const noexcept {
     return m_node->rect.position;
 }
@@ -47,6 +55,74 @@ layout::Position layout::Region::position() const noexcept {
 void layout::Region::set_component(
     std::shared_ptr<component::ComponentBase> c) {
     m_node->component = std::move(c);
+    if(m_node->request != SizeRequest{}) request_size({});
+}
+
+void layout::Region::layout_split(RegionNode& parent, const SplitKey& key,
+                                  Split& split) {
+    const bool vertical = key.orientation == Orientation::Vertical;
+    const Rect& p = parent.rect;
+    const int along = vertical ? p.size.width : p.size.height;
+    const int across = vertical ? p.size.height : p.size.width;
+    const int overlap = key.shared ? 1 : 0;
+
+    const SizeRequest& fr = split.first.m_node->request;
+    const SizeRequest& sr = split.second.m_node->request;
+    auto along_of = [&](const SizeRequest& r) {
+        return vertical ? r.width : r.height;
+    };
+    auto across_of = [&](const SizeRequest& r) {
+        return vertical ? r.height : r.width;
+    };
+
+    // Natural first extent, identical to what the *_split calls use.
+    int first =
+        key.fixed ? resolve_fixed(key.value, along) : along * key.value / 100;
+    if(auto w = along_of(fr)) {
+        first = std::clamp(*w, 0, along);
+    } else if(auto w = along_of(sr)) {
+        first =
+            std::clamp(along + overlap - std::clamp(*w, 0, along), 0, along);
+    }
+    // A fully-swallowed sibling gets no overlap sliver either.
+    const int second = first >= along ? 0 : along - first + overlap;
+    const int second_start = first >= along ? along : first - overlap;
+
+    const int first_across =
+        std::clamp(across_of(fr).value_or(across), 0, across);
+    const int second_across =
+        std::clamp(across_of(sr).value_or(across), 0, across);
+
+    auto make = [&](int start, int extent, int cross) {
+        return vertical
+                   ? Rect{{p.position.x + start, p.position.y}, {extent, cross}}
+                   : Rect{{p.position.x, p.position.y + start},
+                          {cross, extent}};
+    };
+    split.first.m_node->rect = make(0, first, first_across);
+    split.second.m_node->rect = make(second_start, second, second_across);
+}
+
+void layout::Region::reflow(RegionNode& node) {
+    for(auto& [key, split] : node.children) {
+        layout_split(node, key, *split);
+        reflow(*split->first.m_node);
+        reflow(*split->second.m_node);
+    }
+}
+
+void layout::Region::request_size(SizeRequest request) const {
+    m_node->request = request;
+    auto parent = m_node->parent.lock();
+    if(!parent) return;
+    for(auto& [key, split] : parent->children) {
+        if(split->first.m_node != m_node && split->second.m_node != m_node)
+            continue;
+        layout_split(*parent, key, *split);
+        reflow(*split->first.m_node);
+        reflow(*split->second.m_node);
+        return;
+    }
 }
 
 void layout::Region::build(renderer::DrawCommandBuffer& cmd) const {
@@ -232,39 +308,7 @@ layout::Split& layout::Region::h_split_shared(int percent) const {
 
 void layout::propagate_resize(layout::Region& region, layout::Size new_size) {
     region.m_node->rect = Rect{{0, 0}, new_size};
-
-    std::function<void(RegionNode&)> resize_children = [&](RegionNode& node) {
-        for(auto& [key, split] : node.children) {
-            auto& parent_rect = node.rect;
-            int parent_extent = key.orientation == Orientation::Vertical
-                                    ? parent_rect.size.width
-                                    : parent_rect.size.height;
-            int value = key.fixed ? resolve_fixed(key.value, parent_extent)
-                                  : parent_extent * key.value / 100;
-            int overlap = key.shared ? 1 : 0;
-
-            if(key.orientation == Orientation::Vertical) {
-                split->first.m_node->rect = {parent_rect.position,
-                                             {value, parent_rect.size.height}};
-                split->second.m_node->rect = {
-                    {parent_rect.position.x + value - overlap,
-                     parent_rect.position.y},
-                    {parent_rect.size.width - value + overlap,
-                     parent_rect.size.height}};
-            } else {
-                split->first.m_node->rect = {parent_rect.position,
-                                             {parent_rect.size.width, value}};
-                split->second.m_node->rect = {
-                    {parent_rect.position.x,
-                     parent_rect.position.y + value - overlap},
-                    {parent_rect.size.width,
-                     parent_rect.size.height - value + overlap}};
-            }
-            resize_children(*split->first.m_node);
-            resize_children(*split->second.m_node);
-        }
-    };
-    resize_children(*region.m_node);
+    Region::reflow(*region.m_node);
 }
 
 void layout::propagate_resize(Size new_size) { resize_all_roots(new_size); }

@@ -13,7 +13,8 @@
 
 using namespace trux;
 
-renderer::Renderer::Renderer(layout::Size size) : m_size(size) {
+renderer::Renderer::Renderer(layout::Size size)
+    : m_size(size) {
     m_front.resize(size);
     m_back.resize(size);
     m_owner.assign(static_cast<size_t>(size.width) * size.height, false);
@@ -66,8 +67,8 @@ const renderer::CellBuffer& renderer::Renderer::front_buffer() const noexcept {
 renderer::RenderBatches renderer::Renderer::build_batches() const {
     RenderBatches batches;
 
-    auto changes   = m_back.diff(m_front);
-    int  running_x = 0;
+    auto changes = m_back.diff(m_front);
+    int running_x = 0;
 
     for(const auto& change : changes) {
         if(!batches.empty()) {
@@ -96,7 +97,7 @@ void renderer::Renderer::put(layout::Position pos, Cell cell) {
     if(m_clip && !m_clip->contains(pos)) return;
     if(!m_back.contains(pos)) return;
 
-    auto& dst      = m_back.at(pos);
+    auto& dst = m_back.at(pos);
     dst.background = blend(dst.background, cell.background);
     dst.foreground = blend(dst.foreground, cell.foreground);
 
@@ -121,8 +122,7 @@ void renderer::Renderer::put_opaque(layout::Position pos, Cell cell) {
 }
 
 void renderer::Renderer::push(component::ComponentBase& component,
-                              layout::Region            area,
-                              bool                      modal) {
+                              layout::Region area, bool modal) {
     auto id = static_cast<focus::FocusID>(&component);
     push_generic(
         id,
@@ -134,9 +134,8 @@ void renderer::Renderer::push(component::ComponentBase& component,
         [&component] { return component.captures_tab(); });
 }
 
-void renderer::Renderer::push(layout::Split& split,
-                              layout::Region area,
-                              bool           modal) {
+void renderer::Renderer::push(layout::Split& split, layout::Region area,
+                              bool modal) {
     push_generic(
         static_cast<focus::FocusID>(&split),
         area,
@@ -161,13 +160,14 @@ void renderer::Renderer::register_region(layout::Region region, bool modal) {
     auto id = static_cast<focus::FocusID>(comp);
     if(!modal) m_focus.register_focusable(id);
     m_handlers.push_back(
-        Handler{id, region, modal,
+        Handler{id,
+                region,
+                modal,
                 [comp](const input::Event& e) { return comp->handle(e); },
                 [comp] { return comp->captures_tab(); }});
 }
 
-void renderer::Renderer::text(layout::Region   region,
-                              layout::Position pos,
+void renderer::Renderer::text(layout::Region region, layout::Position pos,
                               std::string_view text) {
     auto current = region.absolute(pos);
     for(char c : text) {
@@ -218,47 +218,52 @@ bool renderer::Renderer::dispatch(const input::Event& e) {
 }
 
 void renderer::Renderer::resolve() {
-    for(const auto& command : m_commands.commands()) {
-        std::visit(
-            [this](const auto& cmd) {
-                using T = std::decay_t<decltype(cmd)>;
+    for(const auto* layer :
+        {&m_commands.commands(), &m_commands.overlay_commands()}) {
+        for(const auto& command : *layer) {
+            std::visit(
+                [this](const auto& cmd) {
+                    using T = std::decay_t<decltype(cmd)>;
 
-                if constexpr(std::is_same_v<T, DrawText>) {
-                    auto             pos  = cmd.position;
-                    std::string_view rest = cmd.text;
-                    while(auto decoded = util::decode_utf8(rest)) {
-                        auto [cp, len] = *decoded;
-                        int width      = std::max(1, util::glyph_width(cp));
-                        put(pos,
-                            Cell{.glyph      = cp,
-                                 .foreground = cmd.fg,
-                                 .background = cmd.bg,
-                                 .style      = cmd.style});
-                        for(int i = 1; i < width; i++)
-                            put({pos.x + i, pos.y},
-                                Cell{.glyph = kContinuationGlyph});
-                        pos.x += util::glyph_width(cp);
-                        rest.remove_prefix(len);
-                    }
-                } else if constexpr(std::is_same_v<T, DrawCell>) {
-                    put(cmd.position, cmd.cell);
-                } else if constexpr(std::is_same_v<T, Fill>) {
-                    auto [x, y] = cmd.region.position();
-                    auto [w, h] = cmd.region.size();
-                    for(int row = 0; row < h; row++) {
-                        for(int col = 0; col < w; col++) {
-                            put_opaque({x + col, y + row}, cmd.cell);
+                    if constexpr(std::is_same_v<T, DrawText>) {
+                        auto pos = cmd.position;
+                        std::string_view rest = cmd.text;
+                        while(auto decoded = util::decode_utf8(rest)) {
+                            auto [cp, len] = *decoded;
+                            int width = std::max(1, util::glyph_width(cp));
+                            put(pos,
+                                Cell{.glyph = cp,
+                                     .foreground = cmd.fg,
+                                     .background = cmd.bg,
+                                     .style = cmd.style});
+                            for(int i = 1; i < width; i++)
+                                put({pos.x + i, pos.y},
+                                    Cell{.glyph = kContinuationGlyph});
+                            pos.x += util::glyph_width(cp);
+                            rest.remove_prefix(len);
                         }
+                    } else if constexpr(std::is_same_v<T, DrawCell>) {
+                        put(cmd.position, cmd.cell);
+                    } else if constexpr(std::is_same_v<T, Fill>) {
+                        auto [x, y] = cmd.region.position();
+                        auto [w, h] = cmd.region.size();
+                        for(int row = 0; row < h; row++) {
+                            for(int col = 0; col < w; col++) {
+                                put_opaque({x + col, y + row}, cmd.cell);
+                            }
+                        }
+                    } else if constexpr(std::is_same_v<T, SetClip>) {
+                        m_current_modal = cmd.modal;
+                        set_clip(cmd.region);
+                    } else if constexpr(std::is_same_v<T, ClearClip>) {
+                        m_current_modal = false;
+                        clear_clip();
                     }
-                } else if constexpr(std::is_same_v<T, SetClip>) {
-                    m_current_modal = cmd.modal;
-                    set_clip(cmd.region);
-                } else if constexpr(std::is_same_v<T, ClearClip>) {
-                    m_current_modal = false;
-                    clear_clip();
-                }
-            },
-            command);
+                },
+                command);
+        }
+        clear_clip();
+        m_current_modal = false;
     }
 }
 
@@ -285,7 +290,7 @@ void renderer::Renderer::coalesce_borders() {
             if(!self.is_border) continue;
 
             uint8_t merged = self.mask;
-            auto    try_connect =
+            auto try_connect =
                 [&](int nx, int ny, uint8_t toward, uint8_t back) {
                     if(nx < 0 || ny < 0 || nx >= size.width ||
                        ny >= size.height)
@@ -323,10 +328,8 @@ void renderer::Renderer::set_clip(layout::Region region) {
     int y1 =
         std::min(a.position.y + a.size.height, b.position.y + b.size.height);
 
-    m_clip = layout::Region{
-        {x0, y0},
-        {std::max(0, x1 - x0), std::max(0, y1 - y0)}
-    };
+    m_clip =
+        layout::Region{{x0, y0}, {std::max(0, x1 - x0), std::max(0, y1 - y0)}};
 }
 
 void renderer::Renderer::clear_clip() { m_clip.reset(); }
