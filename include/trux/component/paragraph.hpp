@@ -42,9 +42,11 @@ struct Paragraph {
     std::optional<style::Color> text_color;
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
-    /// When set (see component::BorderColor), Renderer::push() uses this
-    /// instead of the focus/default border color.
+    /// Border color used when unfocused (see component::BorderColor).
     std::optional<style::Color> border_color_fixed;
+    /// Border color used while focused; falls back to
+    /// `border_color_fixed` when unset.
+    std::optional<style::Color> border_color_active;
 
     /// Content height from the most recent build(); reserved for
     /// callers wanting to know the visible line count.

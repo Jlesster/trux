@@ -126,6 +126,7 @@ struct Modifier {
     std::optional<style::Color> text_fg;
     std::optional<style::Color> selection_fg;
     std::optional<style::Color> border_fg;
+    std::optional<style::Color> border_active_fg;
 
     constexpr Modifier() = default;
     /// Implicit, so a FlagModifier combines with a Modifier via `|`.
@@ -147,6 +148,11 @@ struct Modifier {
             if constexpr(requires { target.border_color_fixed = *border_fg; })
                 target.border_color_fixed = *border_fg;
         }
+        if constexpr(requires {
+                         target.border_color_active = *border_active_fg;
+                     })
+            if(border_active_fg)
+                target.border_color_active = *border_active_fg;
     }
 };
 
@@ -158,6 +164,7 @@ constexpr Modifier operator|(Modifier lhs, Modifier rhs) {
     if(rhs.text_fg) out.text_fg = rhs.text_fg;
     if(rhs.selection_fg) out.selection_fg = rhs.selection_fg;
     if(rhs.border_fg) out.border_fg = rhs.border_fg;
+    if(rhs.border_active_fg) out.border_active_fg = rhs.border_active_fg;
     return out;
 }
 
@@ -223,22 +230,39 @@ constexpr uint8_t channel(int v) {
 }
 
 /// Border-only counterparts of Color():
-/// `component::BorderColor(TermColor::RED)`,
+/// `component::BorderColor(AnsiColor::RED)`,
 /// `component::BorderColor({160, 0, 160})`, `BorderColor(160, 0, 160)`. Unlike
 /// assigning `border_color` directly, this survives the focus recolor in
 /// Renderer::push().
-[[nodiscard]] constexpr Modifier BorderColor(AnsiColor color) {
+///
+/// The optional `active` argument sets the color used while the component
+/// has focus; one-argument calls use `color` for both states.
+[[nodiscard]] constexpr Modifier BorderColor(AnsiColor color,
+                                             AnsiColor active) {
     Modifier m;
     m.border_fg = style::Color::Ansi(detail::channel(static_cast<int>(color)));
+    m.border_active_fg =
+        style::Color::Ansi(detail::channel(static_cast<int>(active)));
     return m;
 }
-[[nodiscard]] constexpr Modifier BorderColor(detail::Rgb rgb) {
+[[nodiscard]] constexpr Modifier BorderColor(AnsiColor color) {
+    return BorderColor(color, color);
+}
+[[nodiscard]] constexpr Modifier BorderColor(detail::Rgb rgb,
+                                             detail::Rgb active) {
     Modifier m;
     m.border_fg = style::Color{detail::channel(rgb.r),
                                detail::channel(rgb.g),
                                detail::channel(rgb.b),
                                detail::channel(rgb.a)};
+    m.border_active_fg = style::Color{detail::channel(active.r),
+                                      detail::channel(active.g),
+                                      detail::channel(active.b),
+                                      detail::channel(active.a)};
     return m;
+}
+[[nodiscard]] constexpr Modifier BorderColor(detail::Rgb rgb) {
+    return BorderColor(rgb, rgb);
 }
 [[nodiscard]] constexpr Modifier BorderColor(int r, int g, int b, int a = 255) {
     return BorderColor(detail::Rgb{r, g, b, a});

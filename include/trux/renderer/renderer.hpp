@@ -157,6 +157,9 @@ public:
     /// component::HasBorderColor), it is set to the focused or
     /// unfocused border color (see set_border_colors()) before
     /// building, based on whether `component` currently has focus.
+    /// If `T` also has `border_color_fixed`/`border_color_active`
+    /// (see component::BorderColor), those override the defaults;
+    /// `border_color_active` applies only while focused.
     /// If `T` is not input::Handleable, it is built but never
     /// registered as an input handler.
     ///
@@ -171,12 +174,15 @@ public:
             input::Handleable<T>,
             [&] {
                 if constexpr(component::HasBorderColor<T>) {
-                    component.border_color = m_focus.is_focused(id)
-                                                 ? m_focus_color
-                                                 : m_default_color;
+                    const bool focused = m_focus.is_focused(id);
+                    component.border_color = focused ? m_focus_color
+                                                     : m_default_color;
                     if constexpr(requires { component.border_color_fixed; })
                         if(component.border_color_fixed)
                             component.border_color = *component.border_color_fixed;
+                    if constexpr(requires { component.border_color_active; })
+                        if(focused && component.border_color_active)
+                            component.border_color = *component.border_color_active;
                 }
                 component.build(area, m_commands);
             },

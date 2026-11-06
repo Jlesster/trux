@@ -69,9 +69,11 @@ struct Dropdown {
     style::Style highlight_style{style::Style::Reverse};
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
-    /// When set (see component::BorderColor), Renderer::push() uses this
-    /// instead of the focus/default border color.
+    /// Border color used when unfocused (see component::BorderColor).
     std::optional<style::Color> border_color_fixed;
+    /// Border color used while focused; falls back to
+    /// `border_color_fixed` when unset.
+    std::optional<style::Color> border_color_active;
     /// Foreground for options; unset keeps the default.
     std::optional<style::Color> text_color;
     /// Foreground for the highlighted option while open; falls back to

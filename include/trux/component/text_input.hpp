@@ -53,9 +53,11 @@ struct TextInput {
     /// Style used to draw the cell the cursor is over.
     style::Style cursor_style{style::Style::Reverse};
     style::Color border_color{255, 255, 255, 255};
-    /// When set (see component::BorderColor), Renderer::push() uses this
-    /// instead of the focus/default border color.
+    /// Border color used when unfocused (see component::BorderColor).
     std::optional<style::Color> border_color_fixed;
+    /// Border color used while focused; falls back to
+    /// `border_color_fixed` when unset.
+    std::optional<style::Color> border_color_active;
 
     /// Byte offset of the first character in the scrolled-into-view
     /// window, recomputed each build() to keep the cursor visible.

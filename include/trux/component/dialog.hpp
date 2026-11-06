@@ -51,9 +51,11 @@ struct Dialog {
     std::string title{};
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
-    /// When set (see component::BorderColor), Renderer::push() uses this
-    /// instead of the focus/default border color.
+    /// Border color used when unfocused (see component::BorderColor).
     std::optional<style::Color> border_color_fixed;
+    /// Border color used while focused; falls back to
+    /// `border_color_fixed` when unset.
+    std::optional<style::Color> border_color_active;
     /// Whether the dialog is showing. Cleared by Escape and Enter;
     /// callers set it to show the dialog and skip pushing it when false.
     bool open = false;

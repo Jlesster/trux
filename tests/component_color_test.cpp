@@ -118,13 +118,65 @@ void border_color_survives_focus_test() {
 void border_color_index_test() {
     auto m = c::Menu() | c::BorderColor(AnsiColor::RED);
     assert(m.border_color == style::Color::Ansi(1));
+    assert(m.border_color_fixed == style::Color::Ansi(1));
+    assert(m.border_color_active == style::Color::Ansi(1));
     assert(!m.text_color);
+}
+
+void border_color_pair_test() {
+    auto ansi = c::Menu() | c::BorderColor(AnsiColor::RED, AnsiColor::GREEN);
+    assert(ansi.border_color_fixed == style::Color::Ansi(1));
+    assert(ansi.border_color_active == style::Color::Ansi(2));
+
+    auto rgb = c::Menu() | c::BorderColor({1, 2, 3}, {4, 5, 6});
+    assert(rgb.border_color_fixed == style::Color(1, 2, 3));
+    assert(rgb.border_color_active == style::Color(4, 5, 6));
+}
+
+void border_color_focus_render_test() {
+    renderer::Renderer renderer({10, 6});
+    std::vector<std::string> items{"abc"};
+
+    auto a = c::Menu(items) | c::BorderRounded |
+             c::BorderColor(AnsiColor::RED, AnsiColor::GREEN);
+    auto b = c::Menu(items) | c::BorderRounded |
+             c::BorderColor(AnsiColor::RED, AnsiColor::GREEN);
+
+    layout::Region ra{{0, 0}, {10, 3}};
+    layout::Region rb{{0, 3}, {10, 3}};
+
+    renderer.begin_draw();
+    renderer.push(a, ra);
+    renderer.push(b, rb);
+    renderer.end_draw();
+
+    // First pushed menu is focused -> active (GREEN); second -> fixed (RED).
+    assert(renderer.back_buffer().at({0, 0}).foreground ==
+           style::Color::Ansi(2));
+    assert(renderer.back_buffer().at({0, 3}).foreground ==
+           style::Color::Ansi(1));
+
+    assert(renderer.dispatch(input::Event::key(input::Key::Tab)));
+
+    renderer.begin_draw();
+    renderer.push(a, ra);
+    renderer.push(b, rb);
+    renderer.end_draw();
+
+    // Focus swapped -> colors swap.
+    assert(renderer.back_buffer().at({0, 0}).foreground ==
+           style::Color::Ansi(1));
+    assert(renderer.back_buffer().at({0, 3}).foreground ==
+           style::Color::Ansi(2));
 }
 
 int main() {
     test::run("BorderColor survives focus recolor",
               border_color_survives_focus_test);
     test::run("BorderColor(int) -> indexed", border_color_index_test);
+    test::run("BorderColor pair -> fixed/active", border_color_pair_test);
+    test::run("BorderColor active follows focus",
+              border_color_focus_render_test);
     test::run("Color(int) -> indexed", color_index_overload_test);
     test::run("Color({r,g,b}) -> truecolor", color_braced_rgb_overload_test);
     test::run("Color(r,g,b) and clamping",
