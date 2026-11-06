@@ -9,10 +9,12 @@
 #pragma once
 
 #include "trux/renderer/cell.hpp"
+#include "trux/style/color.hpp"
 #include "trux/style/style.hpp"
 
 #include <format>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -28,33 +30,42 @@ inline bool is_word_char(char32_t cp) noexcept {
            (cp >= 'A' && cp <= 'Z') || cp == '_' || cp > 0x7F;
 }
 
+namespace detail {
+inline void append_color_sgr(std::string& out, const style::Color& c, bool fg) {
+    switch(c.kind) {
+        case style::ColorKind::Default: out += fg ? ";39" : ";49"; break;
+        case style::ColorKind::Indexed:
+            if(c.index < 8) out += std::format(";{}", (fg ? 30 : 40) + c.index);
+            else if(c.index < 16)
+                out += std::format(";{}", (fg ? 90 : 100) + (c.index - 8));
+            else out += std::format(";{};5;{}", fg ? 38 : 48, c.index);
+            break;
+        case style::ColorKind::Rgb:
+            out += std::format(";{};2;{};{};{}", fg ? 38 : 48, c.r, c.g, c.b);
+            break;
+    }
+}
+}  // namespace detail
+
 /// Builds the SGR (Select Graphic Rendition) escape code parameter
-/// string for `cell` — foreground color (always as 24-bit truecolor),
-/// background color (only if `cell.background.a > 0`), and any set
-/// style attributes — ready to be embedded in `"\x1b[{}m"`.
+/// string for 'cell' - forground color (truecolor, palette index, or terminal
+/// default per its kind), background color (only if 'cell.background.a > 0'),
+/// and any set style attributes — ready to be embedded in `"\x1b[{}m"`.
 ///
 /// @return The parameter portion only (e.g. `"0;38;2;255;255;255;1"`),
 ///         without the leading `\x1b[` or trailing `m`.
 [[nodiscard]]
 inline std::string sgr_codes(const trux::renderer::Cell& cell) {
-
     auto has = [style = static_cast<uint8_t>(cell.style)](style::Style s) {
         return style & static_cast<uint8_t>(s);
     };
 
-    std::string codes = "0;";
+    std::string codes = "0";
 
-    codes += std::format("38;2;{};{};{}",
-                         cell.foreground.r,
-                         cell.foreground.g,
-                         cell.foreground.b);
+    detail::append_color_sgr(codes, cell.foreground, true);
 
-    if(cell.background.a > 0) {
-        codes += std::format(";48;2;{};{};{}",
-                             cell.background.r,
-                             cell.background.g,
-                             cell.background.b);
-    }
+    if(cell.background.a > 0)
+        detail::append_color_sgr(codes, cell.background, false);
 
     if(has(style::Style::Bold)) codes += ";1";
     if(has(style::Style::Dim)) codes += ";2";
@@ -131,13 +142,13 @@ inline int next_boundary(std::string_view s, int cursor) noexcept {
 inline int prev_word_boundary(std::string_view s, int cursor) noexcept {
     int i = cursor;
     while(i > 0) {
-        int  p = prev_boundary(s, i);
+        int p = prev_boundary(s, i);
         auto d = decode_utf8(s.substr(static_cast<size_t>(p)));
         if(!d || is_word_char(d->first)) break;
         i = p;
     }
     while(i > 0) {
-        int  p = prev_boundary(s, i);
+        int p = prev_boundary(s, i);
         auto d = decode_utf8(s.substr(static_cast<size_t>(p)));
         if(!d || !is_word_char(d->first)) break;
         i = p;

@@ -19,6 +19,7 @@
 #include <concepts>
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -68,6 +69,14 @@ struct Dropdown {
     style::Style highlight_style{style::Style::Reverse};
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
+    /// When set (see component::BorderColor), Renderer::push() uses this
+    /// instead of the focus/default border color.
+    std::optional<style::Color> border_color_fixed;
+    /// Foreground for options; unset keeps the default.
+    std::optional<style::Color> text_color;
+    /// Foreground for the highlighted option while open; falls back to
+    /// `text_color`.
+    std::optional<style::Color> selection_color;
 
     /// Index of the first visible option while open; clamped during build().
     mutable int offset = 0;
@@ -104,7 +113,8 @@ struct Dropdown {
                 view.draw(static_cast<size_t>(selection),
                           pos,
                           style::Style::None,
-                          cmd);
+                          cmd,
+                          text_color);
             }
             return;
         }
@@ -122,7 +132,10 @@ struct Dropdown {
                       pos,
                       (static_cast<int>(i) == selection) ? highlight_style
                                                          : style::Style::None,
-                      cmd);
+                      cmd,
+                      (static_cast<int>(i) == selection && selection_color)
+                          ? selection_color
+                          : text_color);
             pos.y++;
         }
     }

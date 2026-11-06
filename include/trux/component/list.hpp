@@ -15,6 +15,7 @@
 #include <concepts>
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -59,6 +60,11 @@ struct List {
 
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
+    /// When set (see component::BorderColor), Renderer::push() uses this
+    /// instead of the focus/default border color.
+    std::optional<style::Color> border_color_fixed;
+    /// Foreground for items; unset keeps the default (see component::Color).
+    std::optional<style::Color> text_color;
 
     /// Index of the first visible item; clamped during build() to keep
     /// the view within the items.
@@ -99,7 +105,7 @@ struct List {
         size_t end =
             std::min(size(), begin + static_cast<size_t>(std::max(h, 0)));
         for(size_t i = begin; i < end; i++) {
-            view.draw(i, pos, style_for(i), cmd);
+            view.draw(i, pos, style_for(i), cmd, text_color);
             pos.y++;
         }
     }

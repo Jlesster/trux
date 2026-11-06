@@ -123,3 +123,60 @@ add_test(
     NAME async
     COMMAND async_test
 )
+
+add_executable(piece_table_test
+    piece_table_test.cpp
+)
+
+target_link_libraries(piece_table_test
+    PRIVATE
+    ${PROJECT_NAME}_lib
+)
+
+add_test(
+    NAME PieceTable
+    COMMAND piece_table_test
+)
+
+add_executable(text_area_test
+    text_area_test.cpp
+)
+
+target_link_libraries(text_area_test
+    PRIVATE
+    ${PROJECT_NAME}_lib
+)
+
+add_test(
+    NAME TextArea
+    COMMAND text_area_test
+)
+
+add_executable(color_test
+    color_test.cpp
+)
+
+target_link_libraries(color_test
+    PRIVATE
+    ${PROJECT_NAME}_lib
+)
+
+add_test(
+    NAME Color
+    COMMAND color_test
+)
+
+
+add_executable(component_color_test
+    component_color_test.cpp
+)
+
+target_link_libraries(component_color_test
+    PRIVATE
+    ${PROJECT_NAME}_lib
+)
+
+add_test(
+    NAME ComponentColor
+    COMMAND component_color_test
+)

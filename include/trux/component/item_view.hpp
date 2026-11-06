@@ -7,10 +7,12 @@
 #include "trux/layout/position.hpp"
 #include "trux/renderer/draw_command.hpp"
 #include "trux/renderer/draw_command_buffer.hpp"
+#include "trux/style/color.hpp"
 #include "trux/style/style.hpp"
 
 #include <cstddef>
 #include <functional>
+#include <optional>
 
 namespace trux::component {
 
@@ -30,12 +32,15 @@ struct ItemView {
         draw_ = [range, proj](size_t i,
                               layout::Position pos,
                               style::Style style,
+                              std::optional<style::Color> fg,
                               renderer::DrawCommandBuffer& cmd) {
-            cmd.push(renderer::DrawText{
+            renderer::DrawText text{
                 .position = pos,
                 .text = std::invoke(proj, (*range)[i]),
                 .style = style,
-            });
+            };
+            if(fg) text.fg = *fg;
+            cmd.push(text);
         };
     }
 
@@ -50,15 +55,18 @@ struct ItemView {
     bool empty() const { return size() == 0; }
 
     /// Pushes a DrawText for item `i` at `pos`. No-op while unbound or
-    /// when `i` is out of range.
+    /// when `i` is out of range. `fg` overrides the foreground color;
+    /// std::nullopt keeps DrawText's default.
     void draw(size_t i, layout::Position pos, style::Style style,
-              renderer::DrawCommandBuffer& cmd) const {
-        if(draw_ && i < size()) draw_(i, pos, style, cmd);
+              renderer::DrawCommandBuffer& cmd,
+              std::optional<style::Color> fg = std::nullopt) const {
+        if(draw_ && i < size()) draw_(i, pos, style, fg, cmd);
     }
 
 private:
     std::function<size_t()> count_;
     std::function<void(size_t, layout::Position, style::Style,
+                       std::optional<style::Color>,
                        renderer::DrawCommandBuffer&)>
         draw_;
 };

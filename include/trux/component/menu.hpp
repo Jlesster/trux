@@ -16,6 +16,7 @@
 #include <concepts>
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -63,6 +64,13 @@ struct Menu {
     style::Style selected_style{style::Style::Italic};
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
+    /// When set (see component::BorderColor), Renderer::push() uses this
+    /// instead of the focus/default border color.
+    std::optional<style::Color> border_color_fixed;
+    /// Foreground for items; unset keeps the default (see component::Color).
+    std::optional<style::Color> text_color;
+    /// Foreground for the selected item; falls back to `text_color`.
+    std::optional<style::Color> selection_color;
 
     /// Index of the first visible item; clamped during build().
     mutable int offset = 0;
@@ -125,7 +133,10 @@ struct Menu {
                       (static_cast<int>(i) == selection)
                           ? (style_for(i) | selected_style)
                           : style_for(i),
-                      cmd);
+                      cmd,
+                      (static_cast<int>(i) == selection && selection_color)
+                          ? selection_color
+                          : text_color);
             pos.y++;
         }
     }

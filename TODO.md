@@ -99,11 +99,13 @@ but there's one real, specific gap:
 
 ## 4. Styling / theming
 
+- [x] `Color()` constructor that applies 256 or ansi terminal colors to components and selections
+
 - [ ] `StyledSpan` type + `DrawCommand` variant (or extend `DrawText`) for mixed
       styling within one string.
 - [ ] `Theme`/palette abstraction — named colors resolved through a theme
       instead of literal `Color{r,g,b}` at each call site.
-- [ ] 256-color / no-color fallback path — `util::sgr_codes` always emits
+- [x] 256-color / no-color fallback path — `util::sgr_codes` always emits
       `38;2;r;g;b` truecolor codes unconditionally, confirmed by reading it
       directly; no conditional path exists.
 

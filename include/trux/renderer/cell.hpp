@@ -58,14 +58,24 @@ struct Cell {
 /// per color channel, using each color's alpha as its opacity.
 ///
 /// Returns fully transparent black if the combined alpha is zero.
+/// Palette ('Indexed') and 'Default' colors have no known channel
+/// values so they cant be mixed. Opaque 'src' always wins outright
+/// (keeping its kind); if either side is non-RGB and 'src' is
+/// translucent, 'src' wins when its alpha is >= 128, otherwise 'dst' is kept
 /// Used by Renderer::put() so that translucent draws layer correctly
 /// over previously drawn content instead of fully overwriting it.
 ///
 /// @param dst Color currently in the buffer (the "background" layer).
 /// @param src Color being drawn on top.
 inline style::Color blend(style::Color dst, style::Color src) {
-    float sa    = src.a / 255.0f;
-    float da    = dst.a / 255.0f;
+    if(src.a == 255) return src;
+    if(!src.is_rgb() || !dst.is_rgb()) {
+        if(src.a == 0) return dst;
+        return src.a >= 128 ? src : dst;
+    }
+
+    float sa = src.a / 255.0f;
+    float da = dst.a / 255.0f;
     float out_a = sa + da * (1.0f - sa);
 
     if(out_a <= 0.0f) return {0, 0, 0, 0};

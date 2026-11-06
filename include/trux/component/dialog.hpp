@@ -16,6 +16,7 @@
 #include "trux/style/color.hpp"
 #include "trux/style/style.hpp"
 
+#include <optional>
 #include <algorithm>
 #include <functional>
 #include <string>
@@ -50,6 +51,9 @@ struct Dialog {
     std::string title{};
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
+    /// When set (see component::BorderColor), Renderer::push() uses this
+    /// instead of the focus/default border color.
+    std::optional<style::Color> border_color_fixed;
     /// Whether the dialog is showing. Cleared by Escape and Enter;
     /// callers set it to show the dialog and skip pushing it when false.
     bool open = false;

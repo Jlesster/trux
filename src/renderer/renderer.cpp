@@ -130,7 +130,8 @@ void renderer::Renderer::push(component::ComponentBase& component,
         modal,
         true,
         [&] { component.build(area, m_commands); },
-        [&component](const input::Event& e) { return component.handle(e); });
+        [&component](const input::Event& e) { return component.handle(e); },
+        [&component] { return component.captures_tab(); });
 }
 
 void renderer::Renderer::push(layout::Split& split,
@@ -160,9 +161,9 @@ void renderer::Renderer::register_region(layout::Region region, bool modal) {
     auto id = static_cast<focus::FocusID>(comp);
     if(!modal) m_focus.register_focusable(id);
     m_handlers.push_back(
-        Handler{id, region, modal, [comp](const input::Event& e) {
-                    return comp->handle(e);
-                }});
+        Handler{id, region, modal,
+                [comp](const input::Event& e) { return comp->handle(e); },
+                [comp] { return comp->captures_tab(); }});
 }
 
 void renderer::Renderer::text(layout::Region   region,
@@ -186,6 +187,15 @@ bool renderer::Renderer::dispatch(const input::Event& e) {
     }
 
     if(e.kind == input::EventKind::Key && e.code == input::Key::Tab) {
+        // Components that opt in (e.g. an editor indenting) get Tab
+        // first; focus moves only if they decline it.
+        for(auto it = m_handlers.rbegin(); it != m_handlers.rend(); it++) {
+            if(m_focus.is_focused(it->id)) {
+                if(it->captures_tab && it->captures_tab() && it->fn(e))
+                    return true;
+                break;
+            }
+        }
         if(e.mods.has(input::Mod::Shift)) m_focus.focus_prev();
         else m_focus.focus_next();
         return true;

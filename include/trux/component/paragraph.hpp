@@ -11,6 +11,7 @@
 #include "trux/style/style.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -37,8 +38,13 @@ struct Paragraph {
     mutable int offset = 0;
 
     style::Style text_style{style::Style::None};
+    /// Foreground color; unset keeps the default (see component::Color).
+    std::optional<style::Color> text_color;
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
+    /// When set (see component::BorderColor), Renderer::push() uses this
+    /// instead of the focus/default border color.
+    std::optional<style::Color> border_color_fixed;
 
     /// Content height from the most recent build(); reserved for
     /// callers wanting to know the visible line count.
@@ -68,11 +74,13 @@ struct Paragraph {
         size_t begin = static_cast<size_t>(offset);
         size_t end = std::min(m_lines.size(), begin + static_cast<size_t>(h));
         for(size_t i = begin; i < end; i++) {
-            cmd.push(renderer::DrawText{
+            renderer::DrawText t{
                 .position = pos,
                 .text = m_lines[i],
                 .style = text_style,
-            });
+            };
+            if(text_color) t.fg = *text_color;
+            cmd.push(t);
             pos.y++;
         }
     }

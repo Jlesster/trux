@@ -15,6 +15,7 @@
 #include "trux/renderer/draw_command_buffer.hpp"
 #include "trux/style/color.hpp"
 
+#include <concepts>
 #include <functional>
 #include <optional>
 #include <string_view>
@@ -173,11 +174,21 @@ public:
                     component.border_color = m_focus.is_focused(id)
                                                  ? m_focus_color
                                                  : m_default_color;
+                    if constexpr(requires { component.border_color_fixed; })
+                        if(component.border_color_fixed)
+                            component.border_color = *component.border_color_fixed;
                 }
                 component.build(area, m_commands);
             },
             [&component](const input::Event& e) -> bool {
                 if constexpr(input::Handleable<T>) return component.handle(e);
+                else return false;
+            },
+            [&component]() -> bool {
+                if constexpr(requires {
+                                 { component.captures_tab() } -> std::same_as<bool>;
+                             })
+                    return component.captures_tab();
                 else return false;
             });
     }
@@ -211,7 +222,9 @@ public:
     ///
     /// Resize events are handled directly (see resize(layout::Size)).
     /// Otherwise: any active modal handler takes priority; Tab/Shift+Tab
-    /// advance focus via the FocusManager; a mouse press first moves
+    /// advance focus via the FocusManager, unless the focused component
+    /// opts in with `captures_tab()` and consumes the key itself (for
+    /// example an editor indenting); a mouse press first moves
     /// focus to the region under the cursor; and finally the event is
     /// delivered to whichever registered handler currently has focus.
     ///
@@ -248,6 +261,8 @@ private:
         bool           modal{false};
 
         std::function<bool(const input::Event&)> fn;
+        /// True if the component wants Tab offered to fn first.
+        std::function<bool()> captures_tab;
     };
 
     CellBuffer        m_front;
@@ -293,7 +308,8 @@ private:
                       bool           modal,
                       bool           handleable,
                       BuildFn&&      build_fn,
-                      HandleFn&&     handle_fn) {
+                      HandleFn&&     handle_fn,
+                      std::function<bool()> captures_tab = {}) {
         if(!modal && handleable) m_focus.register_focusable(id);
 
         m_commands.push(SetClip{area, modal});
@@ -302,7 +318,8 @@ private:
 
         if(handleable)
             m_handlers.push_back(
-                Handler{id, area, modal, std::forward<HandleFn>(handle_fn)});
+                Handler{id, area, modal, std::forward<HandleFn>(handle_fn),
+                        std::move(captures_tab)});
     }
 };
 

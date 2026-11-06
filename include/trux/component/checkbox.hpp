@@ -17,6 +17,7 @@
 #include <concepts>
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -66,6 +67,13 @@ struct Checkbox {
     style::Style cursor_style{style::Style::Italic};
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
+    /// When set (see component::BorderColor), Renderer::push() uses this
+    /// instead of the focus/default border color.
+    std::optional<style::Color> border_color_fixed;
+    /// Foreground for items and glyphs; unset keeps the default.
+    std::optional<style::Color> text_color;
+    /// Foreground for the item under the cursor; falls back to `text_color`.
+    std::optional<style::Color> selection_color;
 
     /// Index of the item the cursor is on. Owned by the checkbox, so
     /// it can drift from the bound range when items are removed; it is
@@ -109,15 +117,20 @@ struct Checkbox {
             static constexpr std::string_view glyph_off = "[ ] ";
 
             bool on = checked && i < checked->size() && (*checked)[i];
-            cmd.push(renderer::DrawText{
+            bool at_cursor = static_cast<int>(i) == cursor;
+            auto fg = (at_cursor && selection_color) ? selection_color
+                                                     : text_color;
+            renderer::DrawText glyph{
                 .position = pos,
                 .text = on ? glyph_on : glyph_off,
-            });
+            };
+            if(fg) glyph.fg = *fg;
+            cmd.push(glyph);
             view.draw(i,
                       {pos.x + 4, pos.y},
-                      (static_cast<int>(i) == cursor) ? cursor_style
-                                                      : style::Style::None,
-                      cmd);
+                      at_cursor ? cursor_style : style::Style::None,
+                      cmd,
+                      fg);
             pos.y++;
         }
     }
