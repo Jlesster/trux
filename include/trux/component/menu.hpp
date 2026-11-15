@@ -69,12 +69,12 @@ struct Menu {
     ItemView view;
 
     /// Per-item text style overrides, indexed like the items; see
-    /// set_style()/style_for(). Combined with selected_style for the
+    /// set_style()/style_for(). Combined with selection_style for the
     /// currently selected item.
     std::vector<style::Style> item_styles;
 
     /// Style OR'd onto the selected item's own style.
-    style::Style selected_style{style::Style::Italic};
+    style::Style selection_style{style::Style::Italic};
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
     /// Border color used when unfocused (see component::BorderColor).
@@ -139,7 +139,7 @@ struct Menu {
     }
 
     /// Clamps `offset`, then draws the visible slice of items,
-    /// combining selected_style into the selected row's style.
+    /// combining selection_style into the selected row's style.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
         auto content = area;
         if(auto border = active_border(flags)) {
@@ -163,7 +163,7 @@ struct Menu {
             view.draw(i,
                       pos,
                       (static_cast<int>(i) == selection)
-                          ? (style_for(i) | selected_style)
+                          ? (style_for(i) | selection_style)
                           : style_for(i),
                       cmd,
                       (static_cast<int>(i) == selection && selection_color)

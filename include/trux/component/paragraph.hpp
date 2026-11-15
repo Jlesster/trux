@@ -51,6 +51,12 @@ struct Paragraph {
     /// `border_color_fixed` when unset.
     std::optional<style::Color> border_color_active;
 
+    /// Whether Tab/Shift+Tab can land on this paragraph (and a mouse
+    /// click can focus it). Set false for static, non-interactive text;
+    /// the paragraph then never steals focus, though Up/Down still
+    /// scroll it if it is focused by other means.
+    bool focusable = true;
+
     /// Content height from the most recent build(); reserved for
     /// callers wanting to know the visible line count.
     mutable int last_height{0};

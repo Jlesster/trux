@@ -161,17 +161,25 @@ public:
     /// (see component::BorderColor), those override the defaults;
     /// `border_color_active` applies only while focused.
     /// If `T` is not input::Handleable, it is built but never
-    /// registered as an input handler.
+    /// registered as an input handler. A handleable `T` that exposes a
+    /// `focusable` member set to false is likewise built (and may still
+    /// handle events if modal) but is skipped for Tab traversal and
+    /// mouse click-to-focus.
     ///
     /// @tparam T Component type satisfying component::ComponentType.
     template <component::ComponentType T>
     void push(T& component, layout::Region area, bool modal = false) {
         auto id = static_cast<focus::FocusID>(&component);
+        const bool handleable = input::Handleable<T>;
+        bool focusable = handleable;
+        if constexpr(requires { static_cast<bool>(component.focusable); })
+            focusable = handleable && static_cast<bool>(component.focusable);
         push_generic(
             id,
             area,
             modal,
-            input::Handleable<T>,
+            handleable,
+            focusable,
             [&] {
                 if constexpr(requires { component.title.active; })
                     component.title.active = m_focus.is_focused(id);
@@ -333,19 +341,21 @@ private:
     void register_region(layout::Region, bool);
 
     /// Shared implementation behind every push() overload: records
-    /// the SetClip/build/ClearClip sequence and, if `handleable`,
-    /// registers an input Handler for `id`.
+    /// the SetClip/build/ClearClip sequence, registers `id` for Tab
+    /// traversal when `focusable`, and registers an input Handler when
+    /// `handleable` and reachable (modal, or focusable).
     template <typename BuildFn, typename HandleFn>
     void push_generic(focus::FocusID id, layout::Region area, bool modal,
-                      bool handleable, BuildFn&& build_fn, HandleFn&& handle_fn,
+                      bool handleable, bool focusable, BuildFn&& build_fn,
+                      HandleFn&& handle_fn,
                       std::function<bool()> captures_tab = {}) {
-        if(!modal && handleable) m_focus.register_focusable(id, area.rect());
+        if(!modal && focusable) m_focus.register_focusable(id, area.rect());
 
         m_commands.push(SetClip{area, modal});
         build_fn();
         m_commands.push(ClearClip{});
 
-        if(handleable)
+        if(handleable && (modal || focusable))
             m_handlers.push_back(Handler{id,
                                          area,
                                          modal,

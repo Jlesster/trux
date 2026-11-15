@@ -82,7 +82,7 @@ struct Dropdown {
     bool open{false};
 
     /// Style applied to the highlighted option while open.
-    style::Style highlight_style{style::Style::Reverse};
+    style::Style selection_style{style::Style::Reverse};
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
     /// Border color used when unfocused (see component::BorderColor).
@@ -216,7 +216,7 @@ struct Dropdown {
         for(size_t i = begin; i < end; i++) {
             view.draw(i,
                       pos,
-                      (static_cast<int>(i) == selection) ? highlight_style
+                      (static_cast<int>(i) == selection) ? selection_style
                                                          : style::Style::None,
                       cmd,
                       (static_cast<int>(i) == selection && selection_color)

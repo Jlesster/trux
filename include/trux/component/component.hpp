@@ -292,6 +292,11 @@ struct ComponentBase {
     /// Whether this component actually wants input dispatched to it
     /// (i.e. whether the wrapped type satisfies input::Handleable).
     virtual bool handleable() const { return false; }
+    /// Whether this component participates in focus: it is a Tab stop,
+    /// and a mouse press on it moves focus to it. Defaults to
+    /// handleable(); a handleable component can opt out by exposing a
+    /// `focusable` member (see ComponentWrapper::focusable()).
+    virtual bool focusable() const { return handleable(); }
     /// Whether Tab/Shift+Tab should be offered to this component's
     /// handle() before the renderer uses them for focus traversal.
     /// Only components that define `captures_tab() const` opt in.
@@ -326,6 +331,14 @@ struct ComponentWrapper : ComponentBase {
     bool handleable() const override {
         if constexpr(input::Handleable<T>) return true;
         else return false;
+    }
+    bool focusable() const override {
+        // A `focusable` member (if any) can opt a handleable component
+        // out of the Tab order; components without one follow handleable().
+        if constexpr(requires { static_cast<bool>(inner.focusable); })
+            return handleable() && static_cast<bool>(inner.focusable);
+        else
+            return handleable();
     }
     bool captures_tab() const override {
         if constexpr(requires {

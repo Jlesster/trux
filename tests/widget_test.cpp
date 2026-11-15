@@ -15,10 +15,24 @@
 #include "trux/renderer/renderer.hpp"
 
 #include <cassert>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
 using namespace trux;
+
+// widget_test is built with -DNDEBUG in Release, which turns <cassert>
+// into a no-op. REQUIRE stays active so focus regressions are caught in
+// every build configuration.
+#define REQUIRE(expr)                                                     \
+    do {                                                                  \
+        if(!(expr)) {                                                     \
+            std::fprintf(stderr, "%s:%d: REQUIRE failed: %s\n", __FILE__, \
+                         __LINE__, #expr);                                \
+            std::abort();                                                 \
+        }                                                                 \
+    } while(0)
 
 void label_test() {
     renderer::Renderer renderer({10, 5});
@@ -611,6 +625,58 @@ void paragraph_wrap_and_scroll_test() {
     assert(para.offset == 0);
 }
 
+void paragraph_focusable_toggle_test() {
+    std::vector<std::string> items = {"a", "b"};
+    component::Menu menu(items);
+
+    // Default (focusable = true): the paragraph is a Tab stop, so focus
+    // starts on it and Tab moves on to the menu.
+    {
+        renderer::Renderer renderer({20, 6});
+        component::Paragraph para{"hello"};
+        renderer.begin_draw();
+        renderer.push(para, layout::init({20, 3}));
+        renderer.push(menu, layout::init({20, 3}));
+        renderer.end_draw();
+
+        REQUIRE(renderer.focus().focused() == &para);
+        REQUIRE(renderer.dispatch(input::Event::key(input::Key::Tab)));
+        REQUIRE(renderer.focus().focused() == &menu);
+    }
+
+    // focusable = false: the paragraph is skipped by Tab entirely, so the
+    // menu is the only Tab stop and stays focused.
+    {
+        renderer::Renderer renderer({20, 6});
+        component::Paragraph para{"hello"};
+        para.focusable = false;
+        renderer.begin_draw();
+        renderer.push(para, layout::init({20, 3}));
+        renderer.push(menu, layout::init({20, 3}));
+        renderer.end_draw();
+
+        REQUIRE(renderer.focus().focused() == &menu);
+        REQUIRE(renderer.dispatch(input::Event::key(input::Key::Tab)));
+        REQUIRE(renderer.focus().focused() == &menu);
+    }
+}
+
+void paragraph_focusable_via_component_ptr_test() {
+    // The type-erased path used by layout::Leaves (Region::component_ptr())
+    // must honor the focusable toggle too.
+    component::Paragraph para{"hello"};
+    para.focusable = false;
+    layout::Region leaf = layout::init({20, 3});
+    leaf = para;  // stored as ComponentWrapper<Paragraph>
+
+    renderer::Renderer renderer({20, 6});
+    renderer.begin_draw();
+    renderer.push(*leaf.component_ptr(), layout::init({20, 3}));
+    renderer.end_draw();
+
+    REQUIRE(renderer.focus().focused() == nullptr);  // no Tab stop registered
+}
+
 void split_empty_safe_test() {
     component::Split panes;
     renderer::DrawCommandBuffer cmd;
@@ -684,6 +750,9 @@ int main() {
               struct_of_components_test);
     test::run("label owns its text", label_owns_text_test);
     test::run("paragraph wraps and scrolls", paragraph_wrap_and_scroll_test);
+    test::run("paragraph focusable toggle", paragraph_focusable_toggle_test);
+    test::run("paragraph focusable via component_ptr",
+              paragraph_focusable_via_component_ptr_test);
     test::run("empty split is safe and seedable", split_empty_safe_test);
 
     test::run("container builds both children", container_test);

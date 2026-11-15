@@ -139,7 +139,8 @@ struct Split {
         *parent = std::move(promoted);
 
         clear_active(m_root);
-        if(auto* leaf = leftmost_leaf(*parent)) leaf->active_here = true;
+        if(auto* leaf = leftmost_focusable_leaf(*parent))
+            leaf->active_here = true;
     }
 
 private:
@@ -188,7 +189,11 @@ private:
         auto second = std::make_unique<Node>();
         second->leaf =
             std::make_unique<ComponentWrapper<T>>(std::move(content));
-        second->active_here = true;
+        // The new pane becomes active only if it can hold focus;
+        // otherwise the existing (first) pane stays active.
+        const bool new_focusable = second->leaf->focusable();
+        second->active_here = new_focusable;
+        first->active_here = !new_focusable;
 
         target->leaf = nullptr;
         target->axis = axis;
@@ -241,21 +246,34 @@ private:
     static Node* leftmost_leaf(Node& n) {
         return n.is_leaf() ? &n : leftmost_leaf(*n.first);
     }
+    /// The leftmost focusable leaf beneath `n`, or the leftmost leaf if
+    /// none is focusable (so the tree still has an active leaf).
+    static Node* leftmost_focusable_leaf(Node& n) {
+        if(auto* f = first_focusable_leaf(n)) return f;
+        return leftmost_leaf(n);
+    }
+    /// The leftmost focusable leaf beneath `n`, or nullptr if none.
+    static Node* first_focusable_leaf(Node& n) {
+        if(n.is_leaf()) return (n.leaf && n.leaf->focusable()) ? &n : nullptr;
+        if(auto* f = first_focusable_leaf(*n.first)) return f;
+        return first_focusable_leaf(*n.second);
+    }
 
-    /// Moves the active leaf `dir` steps (1 or -1) through the
-    /// tree's leaves in traversal order, wrapping around. A no-op if
-    /// fewer than two leaves exist.
+    /// Moves the active leaf `dir` steps (1 or -1) through the tree's
+    /// focusable leaves in traversal order, wrapping around. A no-op if
+    /// fewer than two focusable leaves exist.
     void move_active(int dir) {
         if(empty()) return;
         std::vector<Node*> leaves;
-        collect_leaves(m_root, leaves);
+        collect_focusable_leaves(m_root, leaves);
         if(leaves.size() < 2) return;
 
         auto it = std::find_if(leaves.begin(), leaves.end(), [](Node* n) {
             return n->active_here;
         });
-        size_t idx =
-            (it == leaves.end()) ? 0 : static_cast<size_t>(it - leaves.begin());
+        size_t idx = (it == leaves.end())
+                         ? leaves.size() - 1
+                         : static_cast<size_t>(it - leaves.begin());
         size_t next =
             (idx + leaves.size() + static_cast<size_t>(dir)) % leaves.size();
 
@@ -271,6 +289,17 @@ private:
         }
         collect_leaves(*n.first, out);
         collect_leaves(*n.second, out);
+    }
+
+    /// Appends every focusable leaf beneath `n`, in tree (left-to-right)
+    /// order, to `out`.
+    static void collect_focusable_leaves(Node& n, std::vector<Node*>& out) {
+        if(n.is_leaf()) {
+            if(n.leaf && n.leaf->focusable()) out.push_back(&n);
+            return;
+        }
+        collect_focusable_leaves(*n.first, out);
+        collect_focusable_leaves(*n.second, out);
     }
 };
 }  // namespace trux::component

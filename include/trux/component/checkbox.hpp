@@ -112,7 +112,7 @@ struct Checkbox {
     }
 
     /// Style applied to the item under the cursor.
-    style::Style cursor_style{style::Style::Italic};
+    style::Style selection_style{style::Style::Italic};
     ComponentFlags flags{};
     style::Color border_color{255, 255, 255, 255};
     /// Border color used when unfocused (see component::BorderColor).
@@ -195,7 +195,7 @@ struct Checkbox {
             cmd.push(glyph);
             view.draw(i,
                       {pos.x + 4, pos.y},
-                      at_cursor ? cursor_style : style::Style::None,
+                      at_cursor ? selection_style : style::Style::None,
                       cmd,
                       fg);
             pos.y++;

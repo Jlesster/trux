@@ -132,6 +132,22 @@ static void test_fps() {
     CHECK(c.fps() == 0 && c.frame_interval_ms() == 0);
 }
 
+static void test_not_focusable() {
+    // Canvas is display-only. Pushing it through the type-erased
+    // ComponentBase& path (what layout::Leaves / Region::component_ptr()
+    // uses) must not register it as a Tab stop.
+    renderer::Renderer r({20, 6});
+    Canvas canvas(4, 3);
+    layout::Region leaf = layout::init({20, 6});
+    leaf = canvas;  // stored as ComponentWrapper<Canvas>
+
+    r.begin_draw();
+    r.push(*leaf.component_ptr(), layout::init({20, 6}));
+    r.end_draw();
+
+    CHECK(r.focus().focused() == nullptr);
+}
+
 static void test_tick_interval() {
     using namespace std::chrono_literals;
     input::Input in;
@@ -148,6 +164,7 @@ int main() {
     test_border();
     test_clipping_and_background();
     test_fps();
+    test_not_focusable();
     test_tick_interval();
     std::puts("canvas_test: all passed");
 }

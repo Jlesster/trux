@@ -46,9 +46,13 @@ struct Fg {
 };
 using TitleOpt = std::variant<std::string, AnsiColor, style::Style, Active, Fg>;
 
-/// Field order matters for designated init: fg, border, title.
+/// Field order matters for designated init: fg, border, title,
+/// selection_style.
 struct Look {
     std::optional<AnsiColor> fg;  // text + selection colour
+    /// Style of the selected row/option in Menu, Dropdown and Checkbox;
+    /// unset keeps each component's own default.
+    std::optional<style::Style> selection_style;
     BorderLook border;
     Title title;
 
@@ -112,6 +116,9 @@ constexpr void apply_look(T& t, const Look& l) {
     }
     if constexpr(requires { t.title = l.title; })
         if(!l.title.text.empty()) t.title = l.title;
+    if(l.selection_style)
+        if constexpr(requires { t.selection_style = style::Style::None; })
+            t.selection_style = *l.selection_style;
 }
 
 }  // namespace trux::component

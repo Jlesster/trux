@@ -129,7 +129,8 @@ void renderer::Renderer::push(component::ComponentBase& component,
         id,
         area,
         modal,
-        true,
+        component.handleable(),
+        component.focusable(),
         [&] { component.build(area, m_commands); },
         [&component](const input::Event& e) { return component.handle(e); },
         [&component] { return component.captures_tab(); });
@@ -141,6 +142,7 @@ void renderer::Renderer::push(layout::Split& split, layout::Region area,
         static_cast<focus::FocusID>(&split),
         area,
         modal,
+        false,
         false,
         [&] { split.build(area, m_commands); },
         [](const input::Event&) { return false; });
@@ -157,13 +159,15 @@ void renderer::Renderer::register_region(layout::Region region, bool modal) {
     }
     if(!comp->handleable()) return;
     auto id = static_cast<focus::FocusID>(comp);
-    if(!modal) m_focus.register_focusable(id, region.rect());
-    m_handlers.push_back(
-        Handler{id,
-                region,
-                modal,
-                [comp](const input::Event& e) { return comp->handle(e); },
-                [comp] { return comp->captures_tab(); }});
+    const bool focusable = comp->focusable();
+    if(!modal && focusable) m_focus.register_focusable(id, region.rect());
+    if(modal || focusable)
+        m_handlers.push_back(
+            Handler{id,
+                    region,
+                    modal,
+                    [comp](const input::Event& e) { return comp->handle(e); },
+                    [comp] { return comp->captures_tab(); }});
 }
 
 void renderer::Renderer::text(layout::Region region, layout::Position pos,
