@@ -7,12 +7,13 @@
 #include "trux/input/key.hpp"
 #include "trux/renderer/draw_command.hpp"
 
-#include <optional>
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <trux/component/border.hpp>
 #include <trux/component/component_flags.hpp>
+#include <trux/component/look.hpp>
 #include <trux/input/event.hpp>
 #include <trux/renderer/draw_command_buffer.hpp>
 #include <trux/style/style.hpp>
@@ -37,6 +38,9 @@ struct TextInput {
         : value(std::move(initial)),
           cursor(static_cast<int>(value.size())) {}
 
+    /// Applies `look` (border, colours, title) to an empty input.
+    explicit TextInput(const Look& look) { apply_look(*this, look); }
+
     /// Replaces the text and moves the cursor to its end.
     void set_value(std::string text) {
         value = std::move(text);
@@ -48,6 +52,9 @@ struct TextInput {
     /// Byte offset into `value` where the cursor sits; clamped to a
     /// valid position during build() (hence mutable).
     mutable int cursor = 0;
+
+    /// The title to be displayed, with styling
+    Title title;
 
     ComponentFlags flags{};
     /// Style used to draw the cell the cursor is over.
@@ -70,6 +77,7 @@ struct TextInput {
         auto content = area;
         if(auto border = active_border(flags)) {
             build_border(area, *border, cmd, border_color);
+            build_title(area, title, border_color, cmd);
             content = inset(area);
         }
 
@@ -125,32 +133,26 @@ struct TextInput {
                                  static_cast<size_t>(end - m_view_start)};
         auto pos = content.position();
         int cursor_col = col_width(m_view_start, cursor);
-        if(cursor <= m_view_start) {
-            cmd.push(renderer::DrawText{pos, " ", cursor_style});
-            cmd.push(renderer::DrawText{{pos.x + 1, pos.y}, visible});
+        size_t split = static_cast<size_t>(cursor - m_view_start);
+        auto before = visible.substr(0, std::min(split, visible.size()));
+        auto after = visible.substr(std::min(split, visible.size()));
+
+        cmd.push(renderer::DrawText{pos, before});
+        auto cursor_pos = pos;
+        cursor_pos.x += cursor_col;
+
+        if(after.empty()) {
+            cmd.push(renderer::DrawText{cursor_pos, " ", cursor_style});
         } else {
-            size_t split = static_cast<size_t>(cursor - m_view_start);
-            auto before = visible.substr(0, std::min(split, visible.size()));
-            auto after = visible.substr(std::min(split, visible.size()));
+            int glyph_len = util::next_boundary(after, 0);
+            auto decoded = util::decode_utf8(after);
+            int gw =
+                decoded ? std::max(1, util::glyph_width(decoded->first)) : 1;
 
-            cmd.push(renderer::DrawText{pos, before});
-            auto cursor_pos = pos;
-            cursor_pos.x += cursor_col;
-
-            if(after.empty()) {
-                cmd.push(renderer::DrawText{cursor_pos, " ", cursor_style});
-            } else {
-                int glyph_len = util::next_boundary(after, 0);
-                auto decoded = util::decode_utf8(after);
-                int gw = decoded
-                             ? std::max(1, util::glyph_width(decoded->first))
-                             : 1;
-
-                cmd.push(renderer::DrawText{
-                    cursor_pos, after.substr(0, glyph_len), cursor_style});
-                cmd.push(renderer::DrawText{{cursor_pos.x + gw, cursor_pos.y},
-                                            after.substr(glyph_len)});
-            }
+            cmd.push(renderer::DrawText{
+                cursor_pos, after.substr(0, glyph_len), cursor_style});
+            cmd.push(renderer::DrawText{{cursor_pos.x + gw, cursor_pos.y},
+                                        after.substr(glyph_len)});
         }
     }
 
@@ -176,6 +178,7 @@ struct TextInput {
         }
 
         if(event.kind != input::EventKind::Key) return false;
+        if(event.key_state == input::KeyState::Release) return false;
 
         switch(event.code) {
             case input::Key::Left:

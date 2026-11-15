@@ -13,7 +13,7 @@ build:
 	cmake --build --preset $(PRESET)
 
 docs: build
-	-cmake --build --preset $(PRESET) --target trux_docs
+	cmake --build --preset $(PRESET) --target trux_docs
 
 test: build
 	ctest --test-dir $(BUILD_DIR) --output-on-failure
@@ -33,7 +33,7 @@ install: docs
 		sudo find $(PREFIX)/share/doc/trux/html -type d -exec chmod 755 {} \;; \
 		sudo find $(PREFIX)/share/doc/trux/html -type f -exec chmod 644 {} \;; \
 	else \
-		echo "docs: $(DOCS_HTML) not found (doxygen missing?) - skipping doc install"; \
+		echo "docs: $(DOCS_HTML) not found - run 'make docs' first, skipping doc install"; \
 	fi
 
 uninstall:

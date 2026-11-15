@@ -11,15 +11,15 @@ using namespace trux;
 
 void input::EventParser::reset_csi() {
     m_params.clear();
-    m_current   = CsiParam{};
-    m_in_sub    = false;
+    m_current = CsiParam{};
+    m_in_sub = false;
     m_sgr_mouse = false;
 }
 
 void input::EventParser::push_digit(char byte) {
-    int  digit = byte - '0';
-    int& slot  = m_in_sub ? m_current.sub : m_current.value;
-    slot       = (slot < 0 ? 0 : slot * 10) + digit;
+    int digit = byte - '0';
+    int& slot = m_in_sub ? m_current.sub : m_current.value;
+    slot = (slot < 0 ? 0 : slot * 10) + digit;
 }
 
 int input::EventParser::param(std::size_t i, int fallback) const noexcept {
@@ -43,9 +43,11 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
             if(byte == '\n' || byte == '\r') { return Event::key(Key::Enter); }
             if(byte == '\t') { return Event::key(Key::Tab); }
             if(byte == '\x7f') { return Event::key(Key::Backspace); }
-            if(byte == '\x17') {
+            if(byte == '\x17' || byte == '\x08') {
                 return Event::key(Key::Backspace, input::with(Mod::Ctrl));
             }
+            if(byte == '\x7f')
+                return Event::key(Key::Backspace, input::with(Mod::Alt));
             if(byte >= 32 && byte <= 126) {
                 return Event::key(static_cast<char32_t>(byte));
             }
@@ -66,7 +68,7 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
                 m_utf8_buffer.clear();
                 m_utf8_buffer.push_back(byte);
                 m_utf8_remaining = len - 1;
-                m_state          = State::UTF8;
+                m_state = State::UTF8;
                 return std::nullopt;
             }
             return std::nullopt;
@@ -78,14 +80,14 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
                 m_state = State::Normal;
                 m_utf8_buffer.clear();
                 m_utf8_remaining = 0;
-                m_reprocess      = byte;
+                m_reprocess = byte;
                 return std::nullopt;
             }
 
             m_utf8_buffer.push_back(byte);
             if(--m_utf8_remaining > 0) return std::nullopt;
 
-            m_state      = State::Normal;
+            m_state = State::Normal;
             auto decoded = trux::util::decode_utf8(m_utf8_buffer);
             m_utf8_buffer.clear();
             if(!decoded) return std::nullopt;
@@ -115,21 +117,11 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
         case State::SS3: {
             m_state = State::Normal;
             switch(byte) {
-                case 'P':
-                    return Event::key(Key::F1);
-                    break;
-                case 'Q':
-                    return Event::key(Key::F2);
-                    break;
-                case 'R':
-                    return Event::key(Key::F3);
-                    break;
-                case 'S':
-                    return Event::key(Key::F4);
-                    break;
-                default:
-                    return std::nullopt;
-                    break;
+                case 'P': return Event::key(Key::F1); break;
+                case 'Q': return Event::key(Key::F2); break;
+                case 'R': return Event::key(Key::F3); break;
+                case 'S': return Event::key(Key::F4); break;
+                default: return std::nullopt; break;
             }
         }
 
@@ -150,7 +142,7 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
             if(byte == ';') {
                 m_params.push_back(m_current);
                 m_current = CsiParam{};
-                m_in_sub  = false;
+                m_in_sub = false;
                 return std::nullopt;
             }
 
@@ -171,7 +163,7 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
             if(byte == end_seq[m_paste_match]) {
                 m_paste_match++;
                 if(m_paste_match == end_seq.size()) {
-                    m_state   = State::Normal;
+                    m_state = State::Normal;
                     auto text = std::move(m_paste_buffer);
                     m_paste_buffer.clear();
                     m_paste_match = 0;
@@ -196,15 +188,12 @@ std::optional<input::Event> input::EventParser::parse(char byte) {
 }
 
 std::optional<input::Event> input::EventParser::finish_csi(char final_byte) {
-    Modifiers mods      = decode_modifier_param(param(1, 1));
-    KeyState  key_state = [&] {
+    Modifiers mods = decode_modifier_param(param(1, 1));
+    KeyState key_state = [&] {
         switch(param_sub(1, 1)) {
-            case 3:
-                return KeyState::Release;
-            case 2:
-                return KeyState::Repeat;
-            default:
-                return KeyState::Press;
+            case 3: return KeyState::Release;
+            case 2: return KeyState::Repeat;
+            default: return KeyState::Press;
         }
     }();
 
@@ -213,70 +202,36 @@ std::optional<input::Event> input::EventParser::finish_csi(char final_byte) {
     };
 
     switch(final_byte) {
-        case 'A':
-            return with_mods(Key::Up);
-            break;
-        case 'B':
-            return with_mods(Key::Down);
-            break;
-        case 'C':
-            return with_mods(Key::Right);
-            break;
-        case 'D':
-            return with_mods(Key::Left);
-            break;
-        case 'H':
-            return with_mods(Key::Home);
-            break;
-        case 'F':
-            return with_mods(Key::End);
-            break;
-        case 'Z':
-            return Event::key(Key::Tab, input::with(Mod::Shift));
-            break;
+        case 'A': return with_mods(Key::Up); break;
+        case 'B': return with_mods(Key::Down); break;
+        case 'C': return with_mods(Key::Right); break;
+        case 'D': return with_mods(Key::Left); break;
+        case 'H': return with_mods(Key::Home); break;
+        case 'F': return with_mods(Key::End); break;
+        case 'Z': return Event::key(Key::Tab, input::with(Mod::Shift)); break;
 
         case '~': {
             switch(param(0, 0)) {
-                case 2:
-                    return with_mods(Key::Insert);
-                case 3:
-                    return with_mods(Key::Delete);
-                case 4:
-                    return with_mods(Key::End);
-                case 5:
-                    return with_mods(Key::PageUp);
-                case 6:
-                    return with_mods(Key::PageDown);
-                case 7:
-                    return with_mods(Key::Home);
-                case 8:
-                    return with_mods(Key::End);
-                case 11:
-                    return with_mods(Key::F1);
-                case 12:
-                    return with_mods(Key::F2);
-                case 13:
-                    return with_mods(Key::F3);
-                case 14:
-                    return with_mods(Key::F4);
-                case 15:
-                    return with_mods(Key::F5);
-                case 17:
-                    return with_mods(Key::F6);
-                case 18:
-                    return with_mods(Key::F7);
-                case 19:
-                    return with_mods(Key::F8);
-                case 20:
-                    return with_mods(Key::F9);
-                case 21:
-                    return with_mods(Key::F10);
-                case 23:
-                    return with_mods(Key::F11);
-                case 24:
-                    return with_mods(Key::F12);
-                default:
-                    return std::nullopt;
+                case 2: return with_mods(Key::Insert);
+                case 3: return with_mods(Key::Delete);
+                case 4: return with_mods(Key::End);
+                case 5: return with_mods(Key::PageUp);
+                case 6: return with_mods(Key::PageDown);
+                case 7: return with_mods(Key::Home);
+                case 8: return with_mods(Key::End);
+                case 11: return with_mods(Key::F1);
+                case 12: return with_mods(Key::F2);
+                case 13: return with_mods(Key::F3);
+                case 14: return with_mods(Key::F4);
+                case 15: return with_mods(Key::F5);
+                case 17: return with_mods(Key::F6);
+                case 18: return with_mods(Key::F7);
+                case 19: return with_mods(Key::F8);
+                case 20: return with_mods(Key::F9);
+                case 21: return with_mods(Key::F10);
+                case 23: return with_mods(Key::F11);
+                case 24: return with_mods(Key::F12);
+                default: return std::nullopt;
             }
         }
 
@@ -285,26 +240,19 @@ std::optional<input::Event> input::EventParser::finish_csi(char final_byte) {
             if(cp < 0) return std::nullopt;
 
             switch(cp) {
-                case 9:
-                    return with_mods(Key::Tab);
-                case 13:
-                    return with_mods(Key::Enter);
-                case 27:
-                    return with_mods(Key::Escape);
-                case 127:
-                    return with_mods(Key::Backspace);
-                default:
-                    return with_mods(static_cast<char32_t>(cp));
+                case 9: return with_mods(Key::Tab);
+                case 13: return with_mods(Key::Enter);
+                case 27: return with_mods(Key::Escape);
+                case 127: return with_mods(Key::Backspace);
+                default: return with_mods(static_cast<char32_t>(cp));
             }
         }
-        default:
-            return std::nullopt;
-            break;
+        default: return std::nullopt; break;
     }
 }
 
-std::optional<input::Event>
-input::EventParser::finish_sgr_mouse(char final_byte) {
+std::optional<input::Event> input::EventParser::finish_sgr_mouse(
+    char final_byte) {
     if(final_byte != 'M' && final_byte != 'm') return std::nullopt;
 
     int cb = param(0, -1);
@@ -317,13 +265,13 @@ input::EventParser::finish_sgr_mouse(char final_byte) {
     if(cb & 8) mods.add(Mod::Alt);
     if(cb & 16) mods.add(Mod::Ctrl);
 
-    bool is_wheel  = cb & 64;
+    bool is_wheel = cb & 64;
     bool is_motion = cb & 32;
-    int  btn_bits  = cb & 0x3;
+    int btn_bits = cb & 0x3;
 
     MouseEvent m{};
     m.position = {cx - 1, cy - 1};
-    m.mods     = mods;
+    m.mods = mods;
 
     if(is_wheel) {
         m.kind = (btn_bits == 0) ? MouseKind::ScrollUp : MouseKind::ScrollDown;
@@ -350,7 +298,7 @@ std::optional<input::Event> input::EventParser::resolve_pending() {
     }
 
     bool was_escape = (m_state == State::Escape || m_state == State::SS3);
-    m_state         = State::Normal;
+    m_state = State::Normal;
     if(was_escape) return Event::key(Key::Escape);
     return std::nullopt;
 }

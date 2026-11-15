@@ -1,7 +1,16 @@
 #include "trux/component/checkbox.hpp"
 #include "trux/component/component.hpp"
+#include "trux/component/dialog.hpp"
+#include "trux/component/menu.hpp"
+#include "trux/input/event.hpp"
+#include "trux/input/input.hpp"
+#include "trux/layout/layout.hpp"
+#include "trux/renderer/renderer.hpp"
+#include "trux/terminal/terminal.hpp"
 
+#include <string>
 #include <trux/core.hpp>
+#include <vector>
 
 using namespace trux;
 
@@ -44,7 +53,8 @@ int main() {
     auto widget3 = component::Checkbox(flag_names) | component::BorderRounded;
 
     // the dialog embeds its own text field: dialog.input.value
-    component::Dialog dialog{.title = "Rename"};
+    component::Dialog dialog;
+    dialog.title = "Rename";
     dialog.input.set_value("main.cpp");
 
     // giving widgets attribs after creation

@@ -24,7 +24,7 @@ input::Event input::Input::poll() {
     m_events.pop();
     return event;
 }
-input::Event input::Input::poll(Terminal&            terminal,
+input::Event input::Input::poll(Terminal& terminal,
                                 std::span<const int> extra_fds) {
     if(auto event = next_unconsumed(terminal)) return *event;
     while(!terminal.should_quit()) {
@@ -37,8 +37,14 @@ input::Event input::Input::poll(Terminal&            terminal,
         std::vector<int> watch_fds{async_fd};
         watch_fds.insert(watch_fds.end(), extra_fds.begin(), extra_fds.end());
 
-        if(!terminal.wait_readable(STDIN_FILENO, watch_fds, 100)) {
-            if(m_want_tick) return Event::tick();
+        const auto requested = terminal.tick_interval();
+        const bool ticking = m_want_tick || requested.count() > 0;
+        const auto interval =
+            requested.count() > 0 ? requested : m_tick_interval;
+
+        if(!terminal.wait_readable(
+               STDIN_FILENO, watch_fds, static_cast<int>(interval.count()))) {
+            if(ticking) return Event::tick();
             continue;
         }
         auto ready = terminal.last_ready_fd();

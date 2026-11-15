@@ -7,6 +7,7 @@
 #include "trux/component/border.hpp"
 #include "trux/component/component_flags.hpp"
 #include "trux/component/item_view.hpp"
+#include "trux/component/look.hpp"
 #include "trux/renderer/draw_command_buffer.hpp"
 #include "trux/style/color.hpp"
 #include "trux/style/style.hpp"
@@ -36,9 +37,18 @@ struct List {
     /// Binds the list to an external `items` range. `proj` maps an item
     /// to something convertible to std::string_view.
     template <typename R, typename Proj = std::identity>
-        requires(!std::same_as<std::remove_cvref_t<R>, List>)
+        requires(!std::same_as<std::remove_cvref_t<R>, List> &&
+                 !std::same_as<Proj, Look>)
     explicit List(R& items, Proj proj = {}) {
         bind(items, std::move(proj));
+    }
+
+    /// Same as above, additionally applying `look` (border, colours, title).
+    template <typename R, typename Proj = std::identity>
+        requires(!std::same_as<std::remove_cvref_t<R>, List>)
+    explicit List(R& items, const Look& look, Proj proj = {})
+        : List(items, std::move(proj)) {
+        apply_look(*this, look);
     }
 
     /// (Re)binds to `items`, keeping offset.
@@ -49,6 +59,9 @@ struct List {
 
     /// Number of bound items; 0 while unbound.
     size_t size() const { return view.size(); }
+
+    /// The title to be displayed, with styling
+    Title title;
 
     /// Type-erased view of the bound range and projection.
     ItemView view;
@@ -67,6 +80,21 @@ struct List {
     std::optional<style::Color> border_color_active;
     /// Foreground for items; unset keeps the default (see component::Color).
     std::optional<style::Color> text_color;
+
+    /// Per-item foreground overrides; see set_color()/color_for().
+    ItemColors item_colors;
+
+    /// Sets the foreground color for the item at `index`, overriding
+    /// `text_color` for that item. Pass std::nullopt to go back to the
+    /// component-wide color.
+    void set_color(size_t index, std::optional<style::Color> color) {
+        item_colors.set(index, color);
+    }
+
+    /// The color override for the item at `index`, if one was set.
+    std::optional<style::Color> color_for(size_t index) const {
+        return item_colors.get(index);
+    }
 
     /// Index of the first visible item; clamped during build() to keep
     /// the view within the items.
@@ -94,6 +122,7 @@ struct List {
 
         if(auto border = active_border(flags)) {
             build_border(area, *border, cmd, border_color);
+            build_title(area, title, border_color, cmd);
             content = inset(area);
         }
 
@@ -107,7 +136,11 @@ struct List {
         size_t end =
             std::min(size(), begin + static_cast<size_t>(std::max(h, 0)));
         for(size_t i = begin; i < end; i++) {
-            view.draw(i, pos, style_for(i), cmd, text_color);
+            view.draw(i,
+                      pos,
+                      style_for(i),
+                      cmd,
+                      color_for(i) ? color_for(i) : text_color);
             pos.y++;
         }
     }

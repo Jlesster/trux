@@ -8,7 +8,10 @@
 
 #include <algorithm>
 #include <iterator>
+#include <tuple>
 #include <vector>
+
+#include "trux/layout/rect.hpp"
 
 namespace trux::focus {
 
@@ -26,13 +29,16 @@ public:
     /// Clears the registration order ahead of a new frame's
     /// register_focusable() calls. Does not change which id is
     /// currently focused.
-    void begin_frame() { m_order.clear(); }
+    void begin_frame() {
+        m_order.clear();
+        m_pending.clear();
+    }
 
     /// Records `id` as focusable this frame, appending it to the
     /// traversal order. The first component registered in a frame
     /// becomes focused by default if nothing else is.
-    void register_focusable(FocusID id) {
-        m_order.push_back(id);
+    void register_focusable(FocusID id, layout::Rect rect) {
+        m_pending.push_back({id, rect});
         if(!m_focused) m_focused = id;
     }
 
@@ -41,6 +47,17 @@ public:
     /// (e.g. its component was removed), focus falls back to the
     /// first registered id, or to none if nothing is focusable.
     void end_frame() {
+        // Tab order follows the screen: top to bottom, then left to
+        // right. stable_sort keeps push order for identical positions.
+        std::stable_sort(
+            m_pending.begin(),
+            m_pending.end(),
+            [](const Entry& a, const Entry& b) {
+                return std::tie(a.rect.position.y, a.rect.position.x) <
+                       std::tie(b.rect.position.y, b.rect.position.x);
+            });
+        m_order.clear();
+        for(const Entry& e : m_pending) m_order.push_back(e.id);
         if(m_order.empty()) {
             m_focused = nullptr;
             return;
@@ -68,7 +85,7 @@ public:
     /// focused one, wrapping to the first. A no-op if nothing is registered.
     void focus_next() {
         if(m_order.empty()) return;
-        auto it   = std::find(m_order.begin(), m_order.end(), m_focused);
+        auto it = std::find(m_order.begin(), m_order.end(), m_focused);
         m_focused = (it == m_order.end() || std::next(it) == m_order.end())
                         ? m_order.front()
                         : *std::next(it);
@@ -78,14 +95,19 @@ public:
     /// one, wrapping to the last. A no-op if nothing is registered.
     void focus_prev() {
         if(m_order.empty()) return;
-        auto it   = std::find(m_order.begin(), m_order.end(), m_focused);
+        auto it = std::find(m_order.begin(), m_order.end(), m_focused);
         m_focused = (it == m_order.end() || it == m_order.begin())
                         ? m_order.back()
                         : *std::prev(it);
     }
 
 private:
-    std::vector<FocusID> m_order;
-    FocusID              m_focused{nullptr};
+    struct Entry {
+        FocusID id;
+        layout::Rect rect;
+    };
+    std::vector<Entry> m_pending;  // registration order, unsorted
+    std::vector<FocusID> m_order;  // traversal order, built by end_frame()
+    FocusID m_focused{nullptr};
 };
 }  // namespace trux::focus

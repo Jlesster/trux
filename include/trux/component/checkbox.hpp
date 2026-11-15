@@ -7,6 +7,7 @@
 #include "trux/component/border.hpp"
 #include "trux/component/component_flags.hpp"
 #include "trux/component/item_view.hpp"
+#include "trux/component/look.hpp"
 #include "trux/input/event.hpp"
 #include "trux/renderer/draw_command.hpp"
 #include "trux/renderer/draw_command_buffer.hpp"
@@ -43,9 +44,18 @@ struct Checkbox {
     /// initially unchecked. `proj` maps an item to something
     /// convertible to std::string_view.
     template <typename R, typename Proj = std::identity>
-        requires(!std::same_as<std::remove_cvref_t<R>, Checkbox>)
+        requires(!std::same_as<std::remove_cvref_t<R>, Checkbox> &&
+                 !std::same_as<Proj, Look>)
     explicit Checkbox(R& items, Proj proj = {}) {
         bind(items, std::move(proj));
+    }
+
+    /// Same as above, additionally applying `look` (border, colours, title).
+    template <typename R, typename Proj = std::identity>
+        requires(!std::same_as<std::remove_cvref_t<R>, Checkbox>)
+    explicit Checkbox(R& items, const Look& look, Proj proj = {})
+        : Checkbox(items, std::move(proj)) {
+        apply_look(*this, look);
     }
 
     /// (Re)binds to `items`, keeping cursor, offset and any existing
@@ -57,6 +67,9 @@ struct Checkbox {
         view.bind(items, std::move(proj));
         if(checked_.size() < size()) checked_.resize(size(), false);
     }
+
+    /// The title to be displayed, with styling
+    Title title;
 
     /// Number of bound items; 0 while unbound.
     size_t size() const { return view.size(); }
@@ -112,6 +125,21 @@ struct Checkbox {
     /// Foreground for the item under the cursor; falls back to `text_color`.
     std::optional<style::Color> selection_color;
 
+    /// Per-item foreground overrides; see set_color()/color_for().
+    ItemColors item_colors;
+
+    /// Sets the foreground color for the item at `index`, overriding
+    /// `text_color` for that item. Pass std::nullopt to go back to the
+    /// component-wide color.
+    void set_color(size_t index, std::optional<style::Color> color) {
+        item_colors.set(index, color);
+    }
+
+    /// The color override for the item at `index`, if one was set.
+    std::optional<style::Color> color_for(size_t index) const {
+        return item_colors.get(index);
+    }
+
     /// Index of the item the cursor is on. Owned by the checkbox, so
     /// it can drift from the bound range when items are removed; it is
     /// re-clamped by build(), handle() and clamp().
@@ -135,6 +163,7 @@ struct Checkbox {
         auto content = area;
         if(auto border = active_border(flags)) {
             build_border(area, *border, cmd, border_color);
+            build_title(area, title, border_color, cmd);
             content = inset(area);
         }
 
@@ -155,8 +184,9 @@ struct Checkbox {
 
             bool on = is_checked(i);
             bool at_cursor = static_cast<int>(i) == cursor;
-            auto fg =
-                (at_cursor && selection_color) ? selection_color : text_color;
+            auto fg = (at_cursor && selection_color)
+                          ? selection_color
+                          : (color_for(i) ? color_for(i) : text_color);
             renderer::DrawText glyph{
                 .position = pos,
                 .text = on ? glyph_on : glyph_off,

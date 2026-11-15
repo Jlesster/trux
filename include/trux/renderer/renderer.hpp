@@ -15,6 +15,7 @@
 #include "trux/renderer/draw_command_buffer.hpp"
 #include "trux/style/color.hpp"
 
+#include <chrono>
 #include <concepts>
 #include <functional>
 #include <optional>
@@ -35,7 +36,7 @@ struct RenderBatch {
     std::vector<Cell> cells;
 };
 
-using DrawCommands  = std::vector<DrawCommand>;
+using DrawCommands = std::vector<DrawCommand>;
 using RenderBatches = std::vector<RenderBatch>;
 
 /// Drives one frame of rendering: collects DrawCommands from a
@@ -140,9 +141,8 @@ public:
     ///                   modal layer: it is excluded from normal
     ///                   Tab-based focus traversal but takes priority
     ///                   during dispatch() (see dispatch()).
-    void push(component::ComponentBase& component,
-              layout::Region            area,
-              bool                      modal = false);
+    void push(component::ComponentBase& component, layout::Region area,
+              bool modal = false);
 
     /// Builds both children of `split` into `area` and recursively
     /// registers any components nested within them for input
@@ -173,17 +173,30 @@ public:
             modal,
             input::Handleable<T>,
             [&] {
+                if constexpr(requires { component.title.active; })
+                    component.title.active = m_focus.is_focused(id);
                 if constexpr(component::HasBorderColor<T>) {
                     const bool focused = m_focus.is_focused(id);
-                    component.border_color = focused ? m_focus_color
-                                                     : m_default_color;
+                    component.border_color =
+                        focused ? m_focus_color : m_default_color;
                     if constexpr(requires { component.border_color_fixed; })
                         if(component.border_color_fixed)
-                            component.border_color = *component.border_color_fixed;
+                            component.border_color =
+                                *component.border_color_fixed;
                     if constexpr(requires { component.border_color_active; })
                         if(focused && component.border_color_active)
-                            component.border_color = *component.border_color_active;
+                            component.border_color =
+                                *component.border_color_active;
                 }
+                if constexpr(requires { component.prepare(area); })
+                    component.prepare(area);
+                if constexpr(requires {
+                                 {
+                                     component.frame_interval_ms()
+                                 } -> std::convertible_to<int>;
+                             })
+                    request_tick(std::chrono::milliseconds(
+                        component.frame_interval_ms()));
                 component.build(area, m_commands);
             },
             [&component](const input::Event& e) -> bool {
@@ -192,7 +205,9 @@ public:
             },
             [&component]() -> bool {
                 if constexpr(requires {
-                                 { component.captures_tab() } -> std::same_as<bool>;
+                                 {
+                                     component.captures_tab()
+                                 } -> std::same_as<bool>;
                              })
                     return component.captures_tab();
                 else return false;
@@ -208,7 +223,7 @@ public:
     ///                  to opaque white.
     void set_border_colors(style::Color focused,
                            style::Color unfocused = {255, 255, 255, 255}) {
-        m_focus_color   = focused;
+        m_focus_color = focused;
         m_default_color = unfocused;
     }
 
@@ -256,37 +271,49 @@ public:
     /// ready to be handed to a terminal backend for output.
     inline const RenderBatches& batches() const noexcept { return m_batches; }
 
+    /// How often the app wants to be woken to redraw, as asked for by
+    /// the components pushed in the most recent frame (smallest
+    /// non-zero request wins). Zero means nothing asked for ticks.
+    [[nodiscard]]
+    std::chrono::milliseconds tick_interval() const noexcept {
+        return m_tick;
+    }
+
+    /// Asks for a Tick at least every `interval` until the next
+    /// begin_draw(). Non-positive requests are ignored.
+    void request_tick(std::chrono::milliseconds interval) noexcept {
+        if(interval.count() <= 0) return;
+        if(m_tick.count() == 0 || interval < m_tick) m_tick = interval;
+    }
+
 private:
     /// One registered input target: the region it covers, whether it
     /// belongs to a modal layer, and the callback to invoke when it
     /// receives an event (see push(), register_region(), dispatch()).
     struct Handler {
-
         focus::FocusID id;
         layout::Region region;
-        bool           modal{false};
+        bool modal{false};
 
         std::function<bool(const input::Event&)> fn;
         /// True if the component wants Tab offered to fn first.
         std::function<bool()> captures_tab;
     };
 
-    CellBuffer        m_front;
-    CellBuffer        m_back;
-    RenderBatches     m_batches;
+    CellBuffer m_front;
+    CellBuffer m_back;
+    RenderBatches m_batches;
     DrawCommandBuffer m_commands;
     std::vector<bool> m_owner;
-    bool              m_current_modal{false};
+    bool m_current_modal{false};
 
     std::optional<layout::Region> m_clip;
 
-    layout::Size   m_size;
-    layout::Region m_root{
-        {0, 0},
-        {0, 0}
-    };
+    layout::Size m_size;
+    std::chrono::milliseconds m_tick{0};
+    layout::Region m_root{{0, 0}, {0, 0}};
 
-    focus::FocusManager  m_focus;
+    focus::FocusManager m_focus;
     std::vector<Handler> m_handlers;
 
     style::Color m_focus_color{style::Color::ActiveBorderColor()};
@@ -309,23 +336,21 @@ private:
     /// the SetClip/build/ClearClip sequence and, if `handleable`,
     /// registers an input Handler for `id`.
     template <typename BuildFn, typename HandleFn>
-    void push_generic(focus::FocusID id,
-                      layout::Region area,
-                      bool           modal,
-                      bool           handleable,
-                      BuildFn&&      build_fn,
-                      HandleFn&&     handle_fn,
+    void push_generic(focus::FocusID id, layout::Region area, bool modal,
+                      bool handleable, BuildFn&& build_fn, HandleFn&& handle_fn,
                       std::function<bool()> captures_tab = {}) {
-        if(!modal && handleable) m_focus.register_focusable(id);
+        if(!modal && handleable) m_focus.register_focusable(id, area.rect());
 
         m_commands.push(SetClip{area, modal});
         build_fn();
         m_commands.push(ClearClip{});
 
         if(handleable)
-            m_handlers.push_back(
-                Handler{id, area, modal, std::forward<HandleFn>(handle_fn),
-                        std::move(captures_tab)});
+            m_handlers.push_back(Handler{id,
+                                         area,
+                                         modal,
+                                         std::forward<HandleFn>(handle_fn),
+                                         std::move(captures_tab)});
     }
 };
 

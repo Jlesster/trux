@@ -37,6 +37,9 @@ struct Paragraph {
     /// Index of the first visible wrapped line; clamped during build().
     mutable int offset = 0;
 
+    /// The title to be displayed, with styling
+    Title title;
+
     style::Style text_style{style::Style::None};
     /// Foreground color; unset keeps the default (see component::Color).
     std::optional<style::Color> text_color;
@@ -61,6 +64,7 @@ struct Paragraph {
         auto content = area;
         if(auto border = active_border(flags)) {
             build_border(area, *border, cmd, border_color);
+            build_title(area, title, border_color, cmd);
             content = inset(area);
         }
 

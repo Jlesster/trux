@@ -70,12 +70,6 @@ if(TRUX_BUILD_DOCS)
             COMMENT "Generating Doxygen documentation for ${PROJECT_NAME}"
         )
 
-        # `install` doesn't build targets on its own, so explicitly
-        # build the docs target first, then install what it produced.
-        install(
-            CODE "execute_process(COMMAND \"${CMAKE_COMMAND}\" --build \"${CMAKE_BINARY_DIR}\" --target ${PROJECT_NAME}_docs)"
-            COMPONENT docs
-        )
         install(
             DIRECTORY ${DOXYGEN_OUTPUT_DIRECTORY}/html/
             DESTINATION ${CMAKE_INSTALL_DOCDIR}/html

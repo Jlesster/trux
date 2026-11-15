@@ -8,6 +8,7 @@
 #include "trux/component/border.hpp"
 #include "trux/component/component_flags.hpp"
 #include "trux/component/item_view.hpp"
+#include "trux/component/look.hpp"
 #include "trux/input/event.hpp"
 #include "trux/input/key.hpp"
 #include "trux/renderer/draw_command.hpp"
@@ -20,6 +21,7 @@
 #include <cstddef>
 #include <functional>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -34,26 +36,40 @@ namespace trux::component {
 /// A default-constructed Dropdown is unbound: it draws `--` and
 /// consumes no events. The option range is held by pointer and must
 /// outlive the dropdown. `selection`, `open` and `offset` are plain
-/// owned fields.
+/// owned fields; the selected option's text is also owned and exposed
+/// through value().
 struct Dropdown {
     Dropdown() = default;
 
     /// Binds the dropdown to an external `options` range. `proj` maps
     /// an option to something convertible to std::string_view.
     template <typename R, typename Proj = std::identity>
-        requires(!std::same_as<std::remove_cvref_t<R>, Dropdown>)
+        requires(!std::same_as<std::remove_cvref_t<R>, Dropdown> &&
+                 !std::same_as<Proj, Look>)
     explicit Dropdown(R& options, Proj proj = {}) {
         bind(options, std::move(proj));
+    }
+
+    /// Same as above, additionally applying `look` (border, colours, title).
+    template <typename R, typename Proj = std::identity>
+        requires(!std::same_as<std::remove_cvref_t<R>, Dropdown>)
+    explicit Dropdown(R& options, const Look& look, Proj proj = {})
+        : Dropdown(options, std::move(proj)) {
+        apply_look(*this, look);
     }
 
     /// (Re)binds to `options`, keeping selection, open state and offset.
     template <typename R, typename Proj = std::identity>
     void bind(R& options, Proj proj = {}) {
         view.bind(options, std::move(proj));
+        sync_value();
     }
 
     /// Number of bound options; 0 while unbound.
     size_t size() const { return view.size(); }
+
+    /// The title to be displayed, with styling
+    Title title;
 
     /// Type-erased view of the bound range and projection.
     ItemView view;
@@ -102,6 +118,21 @@ struct Dropdown {
 
     /// Index of the first visible option while open; clamped during build().
     mutable int offset = 0;
+    /// Per-item foreground overrides; see set_color()/color_for().
+    ItemColors item_colors;
+
+    /// Sets the foreground color for the item at `index`, overriding
+    /// `text_color` for that item. Pass std::nullopt to go back to the
+    /// component-wide color.
+    void set_color(size_t index, std::optional<style::Color> color) {
+        item_colors.set(index, color);
+    }
+
+    /// The color override for the item at `index`, if one was set.
+    std::optional<style::Color> color_for(size_t index) const {
+        return item_colors.get(index);
+    }
+
     /// Content height from the most recent build(), used by
     /// handle()'s keep_visible() to scroll the selection into view.
     mutable int last_height{0};
@@ -111,6 +142,14 @@ struct Dropdown {
     void clamp() const {
         selection =
             std::clamp(selection, 0, std::max(0, static_cast<int>(size()) - 1));
+    }
+
+    /// Owned copy of the currently selected option's text. Empty while
+    /// unbound or when there are no options. Also re-clamps `selection`,
+    /// so it is safe to call after externally shrinking the options.
+    std::string value() const {
+        sync_value();
+        return selection_value_;
     }
 
     /// While closed, draws only the selected option's text (or `--`
@@ -142,10 +181,11 @@ struct Dropdown {
         auto content = frame;
         if(auto border = active_border(flags)) {
             build_border(frame, *border, cmd, border_color);
+            build_title(frame, title, border_color, cmd);
             content = inset(frame);
         }
 
-        clamp();
+        sync_value();
         auto pos = content.position();
         if(!open) {
             if(size() == 0 || static_cast<size_t>(selection) >= size()) {
@@ -158,7 +198,9 @@ struct Dropdown {
                           pos,
                           style::Style::None,
                           cmd,
-                          text_color);
+                          color_for(static_cast<size_t>(selection))
+                              ? color_for(static_cast<size_t>(selection))
+                              : text_color);
             }
             return;
         }
@@ -179,7 +221,7 @@ struct Dropdown {
                       cmd,
                       (static_cast<int>(i) == selection && selection_color)
                           ? selection_color
-                          : text_color);
+                          : (color_for(i) ? color_for(i) : text_color));
             pos.y++;
         }
     }
@@ -191,7 +233,7 @@ struct Dropdown {
     [[nodiscard]]
     bool handle(const input::Event& event) {
         if(size() == 0) return false;
-        clamp();
+        sync_value();
 
         if(!open) {
             switch(event.code) {
@@ -215,6 +257,7 @@ struct Dropdown {
                 selection = (selection == 0) ? static_cast<int>(size()) - 1
                                              : selection - 1;
                 keep_visible();
+                sync_value();
                 return true;
 
             case input::Key::Down:
@@ -223,6 +266,7 @@ struct Dropdown {
                                 ? 0
                                 : selection + 1;
                 keep_visible();
+                sync_value();
                 return true;
 
             case input::Key::Enter:
@@ -231,6 +275,20 @@ struct Dropdown {
 
             default: return true;
         }
+    }
+
+private:
+    /// Owned copy of the selected option's text; kept in sync by
+    /// sync_value().
+    mutable std::string selection_value_;
+
+    /// Re-clamps `selection` and refreshes `selection_value_` from the
+    /// bound options (empty while unbound or when there are none).
+    void sync_value() const {
+        clamp();
+        selection_value_ = size() == 0
+                               ? std::string{}
+                               : view.text(static_cast<size_t>(selection));
     }
 };
 }  // namespace trux::component

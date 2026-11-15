@@ -9,12 +9,18 @@
 #include "trux/layout/rect.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 #include <tuple>
 #include <type_traits>
+#include <vector>
 
 namespace trux::component {
 struct ComponentBase;
@@ -81,6 +87,11 @@ struct SplitKey {
     /// overlap at the seam (see `*_split_shared`), for drawing a
     /// shared border between panes. Defaults to false.
     bool shared = false;
+    /// How many children the split produces (>= 2). Part of the key so
+    /// `v_split<2>(30)` and `v_split<3>(30)` are cached separately.
+    int parts = 2;
+
+    std::vector<std::optional<int>> sizes{};
 
     /// Compares keys field-by-field; used to deduplicate cached splits.
     constexpr auto operator<=>(const SplitKey&) const = default;
@@ -88,6 +99,10 @@ struct SplitKey {
 
 /// Passed in a SizeRequest to take every cell the parent split offers.
 inline constexpr int kFill = std::numeric_limits<int>::max();
+
+/// Placeholder in a sizes table: this child takes an equal share of whatever
+/// the sized children leave over.
+inline constexpr int kAuto = std::numeric_limits<int>::min();
 
 /// What a component asks of the Split its Region lives in. An unset
 /// dimension keeps the size the split would give it naturally. Values
@@ -100,6 +115,9 @@ struct SizeRequest {
 
 struct RegionNode;
 struct Split;
+struct Leaves;
+template <std::size_t N>
+struct SplitN;
 
 /// A rectangular area of the terminal that can either host a single
 /// component or be recursively subdivided into a Split of two child
@@ -172,59 +190,92 @@ public:
     /// overlay; equals rect() for a region with no parent.
     Rect root_rect() const noexcept;
 
-    /// Splits this region vertically (side by side) so the first
-    /// child gets `percent` of the width and the second gets the
-    /// remainder.
+    /// Splits this region vertically (side by side) into `N` children.
+    /// The first child gets `percent` of the width; the remaining
+    /// width is divided equally among the other `N - 1` children
+    /// (leftover cells go to the earliest of them). `N` defaults to 2,
+    /// which is the classic "first gets percent, second gets the rest".
     ///
-    /// Calling this again with the same `percent` on the same
-    /// region returns the previously created Split rather than
-    /// creating a new one, so it is safe to call every frame.
+    /// Calling this again with the same arguments on the same region
+    /// returns the previously created split rather than creating a new
+    /// one, so it is safe to call every frame.
     ///
+    /// @code
+    /// auto [a, b, c] = region.v_split<3>(30);  // 30% / 35% / 35%
+    /// @endcode
+    ///
+    /// @tparam N Number of children, >= 2.
     /// @param percent Width of the first child, clamped to [0, 100].
-    /// @return Reference to the (possibly cached) child Split.
+    template <std::size_t N = 2>
     [[nodiscard]]
-    Split& v_split(int percent) const;
+    SplitN<N>& v_split(int percent) const {
+        return split_as<N>({Orientation::Vertical,
+                            false,
+                            std::clamp(percent, 0, 100),
+                            false,
+                            int(N)});
+    }
 
-    /// Splits this region horizontally (stacked) so the first child
-    /// gets `percent` of the height and the second gets the
-    /// remainder. See v_split() for caching behavior.
-    ///
-    /// @param percent Height of the first child, clamped to [0, 100].
+    /// Horizontal (stacked) counterpart of v_split(); `percent` is the
+    /// first child's share of the height.
+    template <std::size_t N = 2>
     [[nodiscard]]
-    Split& h_split(int percent) const;
+    SplitN<N>& h_split(int percent) const {
+        return split_as<N>({Orientation::Horizontal,
+                            false,
+                            std::clamp(percent, 0, 100),
+                            false,
+                            int(N)});
+    }
 
-    /// Splits this region vertically using an absolute cell count
-    /// for the first child's width instead of a percentage. See
-    /// v_split() for caching behavior.
-    ///
-    /// @param cells Width of the first child in cells, clamped to
-    ///              [0, this region's width].
+    /// v_split() with an absolute cell count for the first child's
+    /// width (negative counts from the far edge). The remaining cells
+    /// are divided equally among the other `N - 1` children.
+    template <std::size_t N = 2>
     [[nodiscard]]
-    Split& v_split_fixed(int cells) const;
+    SplitN<N>& v_split_fixed(int cells) const {
+        return split_as<N>({Orientation::Vertical, true, cells, false, int(N)});
+    }
 
-    /// Splits this region horizontally using an absolute cell count
-    /// for the first child's height instead of a percentage. See
-    /// v_split() for caching behavior.
-    ///
-    /// @param cells Height of the first child in cells, clamped to
-    ///              [0, this region's height].
+    /// h_split() with an absolute cell count for the first child's height.
+    template <std::size_t N = 2>
     [[nodiscard]]
-    Split& h_split_fixed(int cells) const;
+    SplitN<N>& h_split_fixed(int cells) const {
+        return split_as<N>(
+            {Orientation::Horizontal, true, cells, false, int(N)});
+    }
 
-    /// Like v_split(), but the two children overlap by one column at
-    /// the seam, so a border/divider drawn by one child's edge is
-    /// visually shared with the other rather than doubled up.
-    ///
-    /// @param percent Width of the first child, clamped to [0, 100].
+    /// Like v_split(), but neighbouring children overlap by one column
+    /// at every seam so a border drawn by one child's edge is shared
+    /// with the next rather than doubled up.
+    template <std::size_t N = 2>
     [[nodiscard]]
-    Split& v_split_shared(int percent) const;
+    SplitN<N>& v_split_shared(int percent) const {
+        return split_as<N>({Orientation::Vertical,
+                            false,
+                            std::clamp(percent, 0, 100),
+                            true,
+                            int(N)});
+    }
 
-    /// Like h_split(), but the two children overlap by one row at
-    /// the seam. See v_split_shared().
-    ///
-    /// @param percent Height of the first child, clamped to [0, 100].
+    /// Like h_split(), but neighbouring children overlap by one row at
+    /// every seam. See v_split_shared().
+    template <std::size_t N = 2>
     [[nodiscard]]
-    Split& h_split_shared(int percent) const;
+    SplitN<N>& h_split_shared(int percent) const {
+        return split_as<N>({Orientation::Horizontal,
+                            false,
+                            std::clamp(percent, 0, 100),
+                            true,
+                            int(N)});
+    }
+
+    template <std::size_t N>
+    [[nodiscard]] SplitN<N>& split_by(SplitKey key) const {
+        key.parts = int(N);
+        return split_as<N>(key);
+    }
+    [[nodiscard]] Leaves leaf() const;
 
     /// Whether `pos` (in absolute terminal coordinates) falls within
     /// this region's bounds.
@@ -270,11 +321,27 @@ private:
     friend void propagate_resize(Region&, Size);
     friend Region init(Size);
     friend void resize_all_roots(Size);
+    friend class Leaves;
 
     explicit Region(std::shared_ptr<RegionNode> node)
         : m_node(std::move(node)) {};
 
     void set_component(std::shared_ptr<component::ComponentBase> c);
+
+    /// Cache lookup / creation shared by every *_split* overload.
+    /// `make` allocates the concrete SplitN<N> so the cached object's
+    /// dynamic type always matches `key.parts`.
+    Split& split_impl(const SplitKey& key,
+                      std::shared_ptr<Split> (*make)()) const;
+
+    template <std::size_t N>
+    SplitN<N>& split_as(const SplitKey& key) const {
+        static_assert(N >= 2, "a split needs at least two children");
+        return static_cast<SplitN<N>&>(split_impl(key, [] {
+            return std::static_pointer_cast<Split>(
+                std::make_shared<SplitN<N>>());
+        }));
+    }
 
     /// Recomputes both children of `split` from the parent's rect, the
     /// split's key and any SizeRequests held by the children.
@@ -282,6 +349,8 @@ private:
                              Split& split);
     /// layout_split() for every split under `node`, recursively.
     static void reflow(RegionNode& node);
+
+    void set_name(std::string_view name) const;
 
     std::shared_ptr<RegionNode> m_node;
     Rect m_rect;
@@ -298,80 +367,175 @@ void propagate_resize(Region&, Size);
 /// when there's a single Renderer for the process.
 void propagate_resize(Size new_size);
 
-/// The pair of child Regions produced by splitting a Region.
+/// The child Regions produced by splitting a Region.
 ///
-/// Supports structured bindings (`auto [left, right] = region.v_split(50);`)
-/// via the `get<I>`/`tuple_size`/`tuple_element` specializations below,
-/// as well as indexing and range-based iteration.
+/// Split itself is count-agnostic (use indexing / range-for / size()).
+/// The splitting methods return SplitN<N>, whose count is known at
+/// compile time and which therefore supports structured bindings:
+/// `auto [left, right] = region.v_split(50);` or
+/// `auto [a, b, c] = region.v_split<3>(30);`.
 struct Split {
-    /// The first child: left half for vertical splits, top half for
-    /// horizontal splits.
-    Region first;
-    /// The second child: right half for vertical splits, bottom half
-    /// for horizontal splits.
-    Region second;
+    /// The child regions in order: left-to-right for vertical splits,
+    /// top-to-bottom for horizontal splits.
+    std::vector<Region> parts;
     /// Flags controlling how this split itself is drawn (e.g. a
-    /// divider/border between the two children).
+    /// divider/border between the children).
     component::ComponentFlags flags{};
 
-    /// Indexes the two children: 0 is `first`, anything else is `second`.
-    constexpr Region& operator[](std::size_t i) noexcept {
-        return i == 0 ? first : second;
-    }
-    /// @copydoc operator[]
-    constexpr const Region& operator[](std::size_t i) const noexcept {
-        return i == 0 ? first : second;
-    }
+    Region& operator[](std::size_t i) noexcept { return parts[i]; }
+    const Region& operator[](std::size_t i) const noexcept { return parts[i]; }
+    std::size_t size() const noexcept { return parts.size(); }
 
     /// @name Iteration
-    /// Enables `for (Region& r : split)` over `{first, second}`.
+    /// Enables `for (Region& r : split)` over every child.
     /// @{
-    constexpr Region* begin() noexcept { return &first; }
-    constexpr Region* end() noexcept { return &second + 1; }
-
-    constexpr const Region* begin() const noexcept { return &first; }
-    constexpr const Region* end() const noexcept { return &second + 1; }
+    auto begin() noexcept { return parts.begin(); }
+    auto end() noexcept { return parts.end(); }
+    auto begin() const noexcept { return parts.begin(); }
+    auto end() const noexcept { return parts.end(); }
     /// @}
 
-    /// Renders both children into `cmd`. `area` is currently unused
+    /// Renders every child into `cmd`. `area` is currently unused
     /// by the implementation but reserved for drawing the split's
     /// own decoration (e.g. a divider) via `flags`.
     void build(Region area, renderer::DrawCommandBuffer& cmd) const;
+};
+
+/// A Split known to have exactly N children. Adds nothing but the
+/// compile-time count that structured bindings need.
+template <std::size_t N>
+struct SplitN : Split {};
+
+class Leaves {
+public:
+    Leaves() = default;
+
+    [[nodiscard]] Region* find(std::string_view name) const;
+    [[nodiscard]] Region& operator[](std::string_view name) const;
+    [[nodiscard]] bool contains(std::string_view name) const;
+    [[nodiscard]] bool is_leaf(std::string_view name) const;
+    [[nodiscard]] std::size_t size() const;
+    [[nodiscard]] std::vector<std::string> names() const;
+    void each(const std::function<void(std::string_view, Region&)>& fn) const;
+
+    template <class T>
+    Region& set(std::string_view name, T comp) const {
+        Region& r = (*this)[name];
+        r = std::move(comp);
+        return r;
+    }
+    void request_size(std::string_view name, SizeRequest req) const {
+        (*this)[name].request_size(req);
+    }
+    bool erase(std::string_view name) const;
+    void clear() const;
+
+    // legacy form: only the first child is sized, the rest share equally
+    template <std::size_t N>
+    SplitN<N>& vsplit(std::string_view parent, int percent,
+                      const std::string_view (&names)[N]) const {
+        return head(parent, Orientation::Vertical, false, percent, names);
+    }
+    template <std::size_t N>
+    SplitN<N>& hsplit(std::string_view parent, int percent,
+                      const std::string_view (&names)[N]) const {
+        return head(parent, Orientation::Horizontal, false, percent, names);
+    }
+    template <std::size_t N>
+    SplitN<N>& vsplit_fixed(std::string_view parent, int cells,
+                            const std::string_view (&names)[N]) const {
+        return head(parent, Orientation::Vertical, true, cells, names);
+    }
+    template <std::size_t N>
+    SplitN<N>& hsplit_fixed(std::string_view parent, int cells,
+                            const std::string_view (&names)[N]) const {
+        return head(parent, Orientation::Horizontal, true, cells, names);
+    }
+
+    // sizes table + names table: leaf.vsplit("root", {20, 50}, {"a", "b", "c"})
+    template <std::size_t M, std::size_t N>
+    SplitN<N>& vsplit(std::string_view parent, const int (&sizes)[M],
+                      const std::string_view (&names)[N]) const {
+        return run(parent, Orientation::Vertical, false, sizes, names);
+    }
+    template <std::size_t M, std::size_t N>
+    SplitN<N>& hsplit(std::string_view parent, const int (&sizes)[M],
+                      const std::string_view (&names)[N]) const {
+        return run(parent, Orientation::Horizontal, false, sizes, names);
+    }
+    template <std::size_t M, std::size_t N>
+    SplitN<N>& vsplit_fixed(std::string_view parent, const int (&sizes)[M],
+                            const std::string_view (&names)[N]) const {
+        return run(parent, Orientation::Vertical, true, sizes, names);
+    }
+    template <std::size_t M, std::size_t N>
+    SplitN<N>& hsplit_fixed(std::string_view parent, const int (&sizes)[M],
+                            const std::string_view (&names)[N]) const {
+        return run(parent, Orientation::Horizontal, true, sizes, names);
+    }
+
+private:
+    friend class Region;
+    explicit Leaves(Region root)
+        : m_root(std::move(root)) {}
+
+    template <std::size_t N>
+    SplitN<N>& head(std::string_view parent, Orientation o, bool fixed,
+                    int value, const std::string_view (&names)[N]) const {
+        SplitKey key{o, fixed, fixed ? value : std::clamp(value, 0, 100)};
+        return finish<N>(parent, std::move(key), names);
+    }
+    template <std::size_t M, std::size_t N>
+    SplitN<N>& run(std::string_view parent, Orientation o, bool fixed,
+                   const int (&sizes)[M],
+                   const std::string_view (&names)[N]) const {
+        static_assert(M <= N, "more sizes than names");
+        SplitKey key{o, fixed, 0};
+        for(std::size_t i = 0; i < M; ++i) {
+            const int v = sizes[i];
+            key.sizes.push_back(
+                v == kAuto
+                    ? std::nullopt
+                    : std::optional<int>(fixed ? v : std::clamp(v, 0, 100)));
+        }
+        return finish<N>(parent, std::move(key), names);
+    }
+    template <std::size_t N>
+    SplitN<N>& finish(std::string_view parent, SplitKey key,
+                      const std::string_view (&names)[N]) const {
+        auto& s = (*this)[parent].template split_by<N>(std::move(key));
+        for(std::size_t i = 0; i < N; ++i) s[i].set_name(names[i]);
+        return s;
+    }
+
+    Region m_root;  // handle onto the tree's root; owns the name registry
 };
 
 }  // namespace trux::layout
 
 namespace trux::layout {
 
-/// `std::get`-style accessor enabling structured bindings on Split.
+/// `std::get`-style accessors enabling structured bindings on SplitN.
 ///
-/// @tparam I Index; must be 0 (`first`) or 1 (`second`).
-template <std::size_t I>
-constexpr Region& get(Split& s) noexcept {
-    static_assert(I < 2,
-                  "Split only exposes first/second to structured binding");
-    return I == 0 ? s.first : s.second;
+/// The `SplitN&&` overload is needed for value-form bindings
+/// (`auto [a, b] = split;`): the standard calls `get<i>` on the hidden
+/// copy as an xvalue, which would otherwise pick the const overload.
+template <std::size_t I, std::size_t N>
+constexpr Region& get(SplitN<N>& s) noexcept {
+    static_assert(I < N, "index out of range for SplitN");
+    return s.parts[I];
 }
-/// @copydoc get(Split&)
-template <std::size_t I>
-constexpr const Region& get(const Split& s) noexcept {
-    static_assert(I < 2,
-                  "Split only exposes first/second to structured binding");
-    return I == 0 ? s.first : s.second;
+/// @copydoc get(SplitN<N>&)
+template <std::size_t I, std::size_t N>
+constexpr const Region& get(const SplitN<N>& s) noexcept {
+    static_assert(I < N, "index out of range for SplitN");
+    return s.parts[I];
 }
-/// @copydoc get(Split&)
-///
-/// Needed for value-form structured bindings (`auto [a, b] = split;`,
-/// as opposed to `auto& [a, b] = split;`): the standard calls
-/// `get<i>` on the invented hidden copy as an xvalue, not an lvalue,
-/// so without this overload the const overload above wins instead
-/// (being the only one an xvalue can bind to) and the bindings come
-/// out const.
-template <std::size_t I>
-constexpr Region& get(Split&& s) noexcept {
-    static_assert(I < 2,
-                  "Split only exposes first/second to structured binding");
-    return I == 0 ? s.first : s.second;
+/// @copydoc get(SplitN<N>&)
+template <std::size_t I, std::size_t N>
+constexpr Region& get(SplitN<N>&& s) noexcept {
+    static_assert(I < N, "index out of range for SplitN");
+    return s.parts[I];
 }
 
 }  // namespace trux::layout
@@ -380,11 +544,11 @@ constexpr Region& get(Split&& s) noexcept {
 /// `tuple_size`/`tuple_element` specializations required for
 /// `trux::layout::Split` to support structured bindings.
 namespace std {
-template <>
-struct tuple_size<trux::layout::Split>
-    : std::integral_constant<std::size_t, 2> {};
-template <std::size_t I>
-struct tuple_element<I, trux::layout::Split> {
+template <std::size_t N>
+struct tuple_size<trux::layout::SplitN<N>>
+    : std::integral_constant<std::size_t, N> {};
+template <std::size_t I, std::size_t N>
+struct tuple_element<I, trux::layout::SplitN<N>> {
     using type = trux::layout::Region;
 };
 }  // namespace std

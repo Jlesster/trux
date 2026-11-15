@@ -1,4 +1,22 @@
+#include <string>
+#include <vector>
+#include "trux/component/checkbox.hpp"
+#include "trux/component/component.hpp"
+#include "trux/component/dialog.hpp"
+#include "trux/component/dropdown.hpp"
+#include "trux/component/label.hpp"
+#include "trux/component/list.hpp"
+#include "trux/component/menu.hpp"
+#include "trux/component/paragraph.hpp"
+#include "trux/component/text_input.hpp"
 #include "trux/core.hpp"
+#include "trux/input/event.hpp"
+#include "trux/input/input.hpp"
+#include "trux/input/key.hpp"
+#include "trux/layout/layout.hpp"
+#include "trux/renderer/renderer.hpp"
+#include "trux/style/color.hpp"
+#include "trux/terminal/terminal.hpp"
 
 using namespace trux;
 
@@ -63,7 +81,8 @@ int main() {
     notes_paragraph |= component::BorderSingle;
 
     // --- modal dialog: rename the executable -------------------------
-    component::Dialog dialog{.title = "Rename executable"};
+    component::Dialog dialog;
+    dialog.title = "Rename Executable";
     // the dialog's input is its own copy of the text; push it back into
     // the main field when the user confirms with Enter.
     dialog.on_confirm = [&] { executable_input.set_value(dialog.input.value); };

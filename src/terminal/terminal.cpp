@@ -41,11 +41,12 @@ void install_handler(int sig, void (*handler)(int)) {
 namespace trux {
 struct Terminal::Impl {
     termios original_termios{};
-    bool    raw_enabled = false;
-    bool    initialized = false;
+    bool raw_enabled = false;
+    bool initialized = false;
 };
 
-Terminal::Terminal() : m_impl(std::make_unique<Impl>()) {}
+Terminal::Terminal()
+    : m_impl(std::make_unique<Impl>()) {}
 
 Terminal::~Terminal() { shutdown(); }
 
@@ -73,7 +74,7 @@ std::expected<void, std::string> Terminal::enable_raw_mode() {
     raw.c_iflag &= ~(IXON | ICRNL);
     raw.c_oflag &= ~(OPOST);
 
-    raw.c_cc[VMIN]  = 1;
+    raw.c_cc[VMIN] = 1;
     raw.c_cc[VTIME] = 0;
 
     if(tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1)
@@ -158,7 +159,7 @@ layout::Size Terminal::size() const {
 
     ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws);
 
-    return {.width  = static_cast<int>(ws.ws_col),
+    return {.width = static_cast<int>(ws.ws_col),
             .height = static_cast<int>(ws.ws_row)};
 }
 
@@ -181,9 +182,8 @@ void Terminal::present(renderer::Renderer& renderer) {
     renderer.commit();
 }
 
-bool Terminal::wait_readable(int                  primary_fd,
-                             std::span<const int> extra_fds,
-                             int                  timeout_ms) {
+bool Terminal::wait_readable(int primary_fd, std::span<const int> extra_fds,
+                             int timeout_ms) {
     std::vector<pollfd> fds;
     fds.push_back({primary_fd, POLLIN, 0});
     for(int fd : extra_fds) fds.push_back({fd, POLLIN, 0});
@@ -231,6 +231,11 @@ bool Terminal::has_pending(int timeout) const {
 
 bool Terminal::resized() const noexcept {
     return g_resize_requested.exchange(false, std::memory_order_relaxed);
+}
+
+std::chrono::milliseconds Terminal::tick_interval() const noexcept {
+    return m_renderer ? m_renderer->tick_interval()
+                      : std::chrono::milliseconds{0};
 }
 
 }  // namespace trux

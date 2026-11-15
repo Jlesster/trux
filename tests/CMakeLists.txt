@@ -180,3 +180,17 @@ add_test(
     NAME ComponentColor
     COMMAND component_color_test
 )
+
+add_executable(canvas_test
+    canvas_test.cpp
+)
+
+target_link_libraries(canvas_test
+    PRIVATE
+    ${PROJECT_NAME}_lib
+)
+
+add_test(
+    NAME canvas
+    COMMAND canvas_test
+)

@@ -6,7 +6,9 @@
 
 #include "trux/input/event_parser.hpp"
 
+#include <chrono>
 #include <queue>
+#include <span>
 
 namespace trux {
 class Terminal;
@@ -26,6 +28,18 @@ public:
     /// Enables or disables emitting periodic Event::tick() events
     /// from poll(Terminal&, ...) while otherwise idle.
     void set_want_tick(bool want) noexcept { m_want_tick = want; }
+    /// Sets how long poll(Terminal&, ...) waits idle before emitting a
+    /// Tick (only when set_want_tick(true)). Default is 100 ms; a
+    /// non-positive interval restores the default. A Tick fires after
+    /// a full idle interval, so a steady stream of input can delay it.
+    void set_tick_interval(std::chrono::milliseconds interval) noexcept {
+        m_tick_interval = interval.count() > 0 ? interval : kDefaultTick;
+    }
+    /// The current tick interval.
+    [[nodiscard]]
+    std::chrono::milliseconds tick_interval() const noexcept {
+        return m_tick_interval;
+    }
 
     /// Whether an already-parsed Event is queued and ready via poll().
     [[nodiscard]]
@@ -49,8 +63,11 @@ private:
     [[nodiscard]]
     std::optional<Event> next_unconsumed(Terminal&);
 
-    bool              m_want_tick = false;
-    EventParser       m_parser;
+    static constexpr std::chrono::milliseconds kDefaultTick{100};
+
+    bool m_want_tick = false;
+    std::chrono::milliseconds m_tick_interval = kDefaultTick;
+    EventParser m_parser;
     std::queue<Event> m_events;
 };
 }  // namespace trux::input

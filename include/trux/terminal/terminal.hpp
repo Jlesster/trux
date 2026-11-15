@@ -7,6 +7,7 @@
 #include "trux/layout/size.hpp"
 #include "trux/renderer/renderer.hpp"
 
+#include <chrono>
 #include <expected>
 #include <memory>
 #include <optional>
@@ -45,7 +46,7 @@ public:
     /// Restores terminal state via shutdown() if still initialized.
     ~Terminal();
 
-    Terminal(const Terminal&)            = delete;
+    Terminal(const Terminal&) = delete;
     Terminal& operator=(const Terminal&) = delete;
 
     /// Transfers ownership of the terminal's state from `other`,
@@ -110,9 +111,8 @@ public:
     /// @return true if some descriptor became readable, false on
     ///         timeout. On true, last_ready_fd() reports which one.
     [[nodiscard]]
-    bool wait_readable(int                  primary_fd,
-                       std::span<const int> extra_fds,
-                       int                  timeout_ms);
+    bool wait_readable(int primary_fd, std::span<const int> extra_fds,
+                       int timeout_ms);
 
     /// The file descriptor that was ready after the most recent
     /// wait_readable() call that returned true, or `std::nullopt` if
@@ -140,6 +140,11 @@ public:
     [[nodiscard]]
     bool dispatch(const input::Event&) const;
 
+    /// Tick interval requested by the Renderer most recently passed to
+    /// present() (see Renderer::tick_interval()); zero if none.
+    [[nodiscard]]
+    std::chrono::milliseconds tick_interval() const noexcept;
+
     /// Reads a single raw byte from stdin, non-blocking beyond
     /// whatever the OS read() call itself blocks for.
     ///
@@ -166,7 +171,7 @@ private:
     /// `<termios.h>`/POSIX includes.
     struct Impl;
     std::unique_ptr<Impl> m_impl;
-    std::optional<int>    m_last_ready_fd;
-    renderer::Renderer*   m_renderer = nullptr;
+    std::optional<int> m_last_ready_fd;
+    renderer::Renderer* m_renderer = nullptr;
 };
 }  // namespace trux

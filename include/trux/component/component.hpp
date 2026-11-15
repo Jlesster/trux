@@ -86,7 +86,7 @@ template <ComponentType T>
 [[nodiscard]]
 constexpr T& operator|(T& component, FlagModifier modifier) {
     modifier.apply(component);
-    return std::move(component);
+    return component;
 }
 
 /// Applies `modifier` to `component` in place.
@@ -133,6 +133,15 @@ struct Modifier {
     constexpr Modifier(FlagModifier m)  // NOLINT(google-explicit-constructor)
         : flag(m.flag) {}
 
+    /// Lets Color(...) / BorderColor(...) stand in for a plain style::Color,
+    /// e.g. `title.fg = component::Color(AnsiColor::MAGENTA)`.
+    constexpr operator style::Color()
+        const {  // NOLINT(google-explicit-constructor)
+        if(text_fg) return *text_fg;
+        if(border_fg) return *border_fg;
+        return style::Color{255, 255, 255, 255};
+    }
+
     /// Sets the flag, and any color fields the component exposes:
     /// `text_color` and/or `selection_color` (std::optional<style::Color>).
     template <ComponentType T>
@@ -151,8 +160,7 @@ struct Modifier {
         if constexpr(requires {
                          target.border_color_active = *border_active_fg;
                      })
-            if(border_active_fg)
-                target.border_color_active = *border_active_fg;
+            if(border_active_fg) target.border_color_active = *border_active_fg;
     }
 };
 

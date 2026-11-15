@@ -55,14 +55,18 @@ struct TextArea {
     TextArea() = default;
 
     /// Starts with `initial` as the text and the cursor at its start.
-    explicit TextArea(std::string initial) : buf(std::move(initial)) {}
+    explicit TextArea(std::string initial)
+        : buf(std::move(initial)) {}
+
+    /// The title to be displayed, with styling
+    Title title;
 
     /// Replaces the text; clears undo history, view and pending input.
     void set_text(std::string t) {
-        buf    = text::PieceTable(std::move(t));
+        buf = text::PieceTable(std::move(t));
         cursor = 0;
         m_top = m_left = 0;
-        m_want_col     = -1;
+        m_want_col = -1;
         clear_pending();
     }
 
@@ -96,7 +100,7 @@ struct TextArea {
     text::PieceTable buf;
     /// Byte offset of the cursor; clamped during build()/handle().
     mutable size_t cursor = 0;
-    Mode           mode   = Mode::Normal;
+    Mode mode = Mode::Normal;
 
     /// Navigation and yank only; edits and insert entries are ignored.
     bool read_only = false;
@@ -104,15 +108,15 @@ struct TextArea {
     bool show_cursor = true;
     /// Enter, o and O copy the current line's indentation.
     bool auto_indent = true;
-    /// Tab inserts spaces (true) or a '\t' (false).
+    /// Tab inserts spaces (true) or a '\\t' (false).
     bool expand_tab = true;
     /// Columns per tab stop and per indent level.
     int tab_width = 4;
 
     ComponentFlags flags{};
-    style::Style   text_style{style::Style::None};
-    style::Style   cursor_style{style::Style::Reverse};
-    style::Color   border_color{255, 255, 255, 255};
+    style::Style text_style{style::Style::None};
+    style::Style cursor_style{style::Style::Reverse};
+    style::Color border_color{255, 255, 255, 255};
     /// Border color used when unfocused (see component::BorderColor).
     std::optional<style::Color> border_color_fixed;
     /// Border color used while focused; falls back to
@@ -131,6 +135,7 @@ struct TextArea {
         auto content = area;
         if(auto border = active_border(flags)) {
             build_border(area, *border, cmd, border_color);
+            build_title(area, title, border_color, cmd);
             content = inset(area);
         }
 
@@ -139,8 +144,8 @@ struct TextArea {
         m_view_h = h;
 
         clamp();
-        const size_t lines  = buf.line_count();
-        const size_t cl     = buf.line_of(cursor);
+        const size_t lines = buf.line_count();
+        const size_t cl = buf.line_of(cursor);
         const std::string line_str = buf.line_text(cl);
         const int ccol = col_of(line_str, cursor - buf.line_start(cl));
         int cgw = 1;
@@ -179,13 +184,15 @@ struct TextArea {
             m_cursor_cell = " ";
             if(cursor < buf.line_end(cl)) {
                 size_t off = cursor - buf.line_start(cl);
-                auto   g   = glyph(line_str, off, ccol);
+                auto g = glyph(line_str, off, ccol);
                 if(g.kind == Glyph::Normal)
-                    m_cursor_cell = line_str.substr(off, static_cast<size_t>(g.len));
+                    m_cursor_cell =
+                        line_str.substr(off, static_cast<size_t>(g.len));
             }
             cmd.push(renderer::DrawText{
                 {pos.x + ccol - m_left, pos.y + static_cast<int>(cl) - m_top},
-                m_cursor_cell, cursor_style});
+                m_cursor_cell,
+                cursor_style});
         }
     }
 
@@ -212,7 +219,8 @@ struct TextArea {
         if(event.key_state == input::KeyState::Release) return false;
 
         clamp();
-        return mode == Mode::Insert ? handle_insert(event) : handle_normal(event);
+        return mode == Mode::Insert ? handle_insert(event)
+                                    : handle_normal(event);
     }
 
 private:
@@ -234,12 +242,13 @@ private:
         if(c < 0x20 || c == 0x7f) return {Glyph::Invalid, 1, 1};
         auto d = util::decode_utf8(s.substr(i));
         if(!d) return {Glyph::Invalid, 1, 1};
-        return {Glyph::Normal, d->second, std::max(1, util::glyph_width(d->first))};
+        return {
+            Glyph::Normal, d->second, std::max(1, util::glyph_width(d->first))};
     }
 
     int col_of(std::string_view line, size_t off) const {
-        int    col = 0;
-        size_t i   = 0;
+        int col = 0;
+        size_t i = 0;
         while(i < off && i < line.size()) {
             auto g = glyph(line, i, col);
             col += g.width;
@@ -250,7 +259,7 @@ private:
 
     /// Byte offset of the character covering display column `col`.
     size_t byte_at_col(std::string_view line, int col) const {
-        int    c = 0;
+        int c = 0;
         size_t i = 0;
         while(i < line.size()) {
             auto g = glyph(line, i, c);
@@ -264,11 +273,12 @@ private:
     /// The line as drawn: tabs become spaces, stray control bytes '?'.
     std::string expand(std::string_view line) const {
         std::string out;
-        int         col = 0;
-        size_t      i   = 0;
+        int col = 0;
+        size_t i = 0;
         while(i < line.size()) {
             auto g = glyph(line, i, col);
-            if(g.kind == Glyph::Tab) out.append(static_cast<size_t>(g.width), ' ');
+            if(g.kind == Glyph::Tab)
+                out.append(static_cast<size_t>(g.width), ' ');
             else if(g.kind == Glyph::Invalid) out.push_back('?');
             else out.append(line.substr(i, static_cast<size_t>(g.len)));
             col += g.width;
@@ -280,12 +290,12 @@ private:
     /// Columns [left, left + width) of an already-expanded line.
     static std::string slice(std::string_view s, int left, int width) {
         std::string out;
-        int         col = 0;
-        size_t      i   = 0;
+        int col = 0;
+        size_t i = 0;
         while(i < s.size()) {
-            auto d   = util::decode_utf8(s.substr(i));
-            int  len = d ? d->second : 1;
-            int  gw  = d ? std::max(1, util::glyph_width(d->first)) : 1;
+            auto d = util::decode_utf8(s.substr(i));
+            int len = d ? d->second : 1;
+            int gw = d ? std::max(1, util::glyph_width(d->first)) : 1;
             if(col >= left) {
                 if(col + gw > left + width) break;
                 out.append(s.substr(i, static_cast<size_t>(len)));
@@ -323,7 +333,7 @@ private:
     }
 
     void set_cursor(size_t pos) {
-        cursor     = pos;
+        cursor = pos;
         m_want_col = -1;
         clamp();
     }
@@ -391,7 +401,7 @@ private:
 
     size_t word_end(size_t p) const {
         size_t n = buf.size();
-        p        = buf.next_char(p);
+        p = buf.next_char(p);
         while(p < n && cls(p) == 0) p++;
         if(p >= n) return n == 0 ? 0 : buf.prev_char(n);
         int c = cls(p);
@@ -404,16 +414,16 @@ private:
 
     struct Motion {
         size_t pos{};
-        bool   linewise{false};
-        bool   inclusive{false};
-        bool   vertical{false};
-        bool   to_eol{false};
+        bool linewise{false};
+        bool inclusive{false};
+        bool vertical{false};
+        bool to_eol{false};
     };
 
     /// Computes where motion key `k` goes. `count` is 0 when the user
     /// gave none. `op` is true when an operator is pending.
     std::optional<Motion> motion(char32_t k, int count, bool op) {
-        const int    n    = std::max(1, count);
+        const int n = std::max(1, count);
         const size_t line = cur_line();
         const size_t last = buf.line_count() - 1;
         const size_t ls = buf.line_start(line), le = buf.line_end(line);
@@ -427,17 +437,17 @@ private:
             case 'l':
             case ' ': {
                 size_t limit = op ? le : (le > ls ? buf.prev_char(le) : ls);
-                size_t p     = cursor;
+                size_t p = cursor;
                 for(int i = 0; i < n && p < limit; i++) p = buf.next_char(p);
                 return Motion{p};
             }
             case 'j':
             case 'k': {
-                size_t target = k == 'j'
-                                    ? std::min(line + static_cast<size_t>(n), last)
-                                    : (line >= static_cast<size_t>(n)
-                                           ? line - static_cast<size_t>(n)
-                                           : 0);
+                size_t target =
+                    k == 'j' ? std::min(line + static_cast<size_t>(n), last)
+                             : (line >= static_cast<size_t>(n)
+                                    ? line - static_cast<size_t>(n)
+                                    : 0);
                 if(target == line && op) return std::nullopt;
                 Motion m{at_want_col(target)};
                 m.linewise = m.vertical = true;
@@ -454,9 +464,10 @@ private:
             }
             case 'g':
             case 'G': {
-                size_t target = k == 'g'
-                                    ? (count ? std::min<size_t>(count - 1, last) : 0)
-                                    : (count ? std::min<size_t>(count - 1, last) : last);
+                size_t target =
+                    k == 'g'
+                        ? (count ? std::min<size_t>(count - 1, last) : 0)
+                        : (count ? std::min<size_t>(count - 1, last) : last);
                 Motion m{first_nonblank(target)};
                 m.linewise = true;
                 return m;
@@ -465,8 +476,7 @@ private:
                 size_t p = cursor;
                 for(int i = 0; i < n; i++) p = word_fwd(p);
                 // dw/yw on a line's last word stops at the line end.
-                if(op && buf.line_of(std::min(p, buf.size())) > line)
-                    p = le;
+                if(op && buf.line_of(std::min(p, buf.size())) > line) p = le;
                 return Motion{p};
             }
             case 'b': {
@@ -539,7 +549,8 @@ private:
         if(s < e && buf.at(s) == '\t') {
             n = 1;
         } else {
-            while(s + n < e && n < static_cast<size_t>(tw()) && buf.at(s + n) == ' ')
+            while(s + n < e && n < static_cast<size_t>(tw()) &&
+                  buf.at(s + n) == ' ')
                 n++;
         }
         buf.erase(s, n);
@@ -547,7 +558,7 @@ private:
     }
 
     void yank(std::string text, bool linewise) {
-        m_reg           = std::move(text);
+        m_reg = std::move(text);
         m_reg_linewise = linewise;
     }
 
@@ -664,10 +675,11 @@ private:
             size_t l = cur_line();
             if(l + 1 >= buf.line_count()) break;
             size_t le = buf.line_end(l);
-            size_t p  = le + 1;
-            while(p < buf.size() && (buf.at(p) == ' ' || buf.at(p) == '\t')) p++;
+            size_t p = le + 1;
+            while(p < buf.size() && (buf.at(p) == ' ' || buf.at(p) == '\t'))
+                p++;
             bool next_empty = p >= buf.size() || buf.at(p) == '\n';
-            bool add_space  = !next_empty && le > buf.line_start(l);
+            bool add_space = !next_empty && le > buf.line_start(l);
             buf.erase(le, p - le);
             if(add_space) buf.insert(le, " ");
             cursor = le;
@@ -695,9 +707,9 @@ private:
     void open_line(bool below) {
         if(read_only) return;
         buf.seal();
-        const size_t line   = cur_line();
-        std::string  indent = auto_indent ? indent_of(line) : std::string{};
-        mode                = Mode::Insert;
+        const size_t line = cur_line();
+        std::string indent = auto_indent ? indent_of(line) : std::string{};
+        mode = Mode::Insert;
         if(below) {
             size_t at = buf.line_end(line);
             buf.insert(at, "\n" + indent);
@@ -711,18 +723,18 @@ private:
 
     void clear_pending() {
         m_count = 0;
-        m_op    = 0;
-        m_pend  = 0;
+        m_op = 0;
+        m_pend = 0;
     }
 
     void move_lines(int delta) {
         size_t line = cur_line();
         size_t last = buf.line_count() - 1;
-        size_t target =
-            delta >= 0 ? std::min(line + static_cast<size_t>(delta), last)
-                       : (line >= static_cast<size_t>(-delta)
-                              ? line - static_cast<size_t>(-delta)
-                              : 0);
+        size_t target = delta >= 0
+                            ? std::min(line + static_cast<size_t>(delta), last)
+                            : (line >= static_cast<size_t>(-delta)
+                                   ? line - static_cast<size_t>(-delta)
+                                   : 0);
         cursor = at_want_col(target);
         clamp();
     }
@@ -748,7 +760,7 @@ private:
 
     bool handle_normal(const input::Event& e) {
         const bool ctrl = e.mods.has(input::Mod::Ctrl);
-        const bool alt  = e.mods.has(input::Mod::Alt);
+        const bool alt = e.mods.has(input::Mod::Alt);
 
         if(e.code == input::Key::Escape) {
             bool had = m_count || m_op || m_pend;
@@ -801,7 +813,8 @@ private:
         }
 
         if((k >= '1' && k <= '9') || (k == '0' && m_count > 0)) {
-            m_count = std::min(m_count * 10 + static_cast<int>(k - '0'), 100000);
+            m_count =
+                std::min(m_count * 10 + static_cast<int>(k - '0'), 100000);
             return true;
         }
 
@@ -818,8 +831,9 @@ private:
             }
             if(m_op == k) {
                 size_t l = cur_line();
-                size_t l2 = std::min(l + static_cast<size_t>(std::max(1, m_count)) - 1,
-                                     buf.line_count() - 1);
+                size_t l2 =
+                    std::min(l + static_cast<size_t>(std::max(1, m_count)) - 1,
+                             buf.line_count() - 1);
                 char32_t op = m_op;
                 clear_pending();
                 linewise_op(op, l, l2);
@@ -841,8 +855,8 @@ private:
     /// Returns false (and changes nothing) if `k` is not a motion.
     bool run_motion(char32_t k) {
         const bool op = m_op != 0;
-        int        cnt = m_count;
-        char32_t   mk  = k;
+        int cnt = m_count;
+        char32_t mk = k;
         // cw behaves like ce when on a word.
         if(m_op == 'c' && k == 'w' && cls(cursor) != 0) mk = 'e';
         auto m = motion(mk, cnt, op);
@@ -852,7 +866,7 @@ private:
             return true;
         }
         const size_t from = cursor;
-        const char32_t o  = m_op;
+        const char32_t o = m_op;
         clear_pending();
         if(o) apply_operator(o, from, *m);
         else commit_motion(*m);
@@ -861,8 +875,18 @@ private:
 
     static bool is_motion_key(char32_t k) {
         switch(k) {
-            case 'h': case 'l': case ' ': case 'j': case 'k': case '0':
-            case '^': case '$': case 'g': case 'G': case 'w': case 'b':
+            case 'h':
+            case 'l':
+            case ' ':
+            case 'j':
+            case 'k':
+            case '0':
+            case '^':
+            case '$':
+            case 'g':
+            case 'G':
+            case 'w':
+            case 'b':
             case 'e': return true;
             default: return false;
         }
@@ -876,20 +900,24 @@ private:
 
         switch(k) {
             case 'i': enter_insert(cursor); break;
-            case 'a': enter_insert(cursor < le ? buf.next_char(cursor) : cursor); break;
+            case 'a':
+                enter_insert(cursor < le ? buf.next_char(cursor) : cursor);
+                break;
             case 'I': enter_insert(first_nonblank(line)); break;
             case 'A': enter_insert(le); break;
             case 'o': open_line(true); break;
             case 'O': open_line(false); break;
             case 'x': {
                 size_t end = cursor;
-                for(int i = 0; i < cnt && end < le; i++) end = buf.next_char(end);
+                for(int i = 0; i < cnt && end < le; i++)
+                    end = buf.next_char(end);
                 charwise_op('d', cursor, end);
                 break;
             }
             case 'X': {
                 size_t start = cursor;
-                for(int i = 0; i < cnt && start > ls; i++) start = buf.prev_char(start);
+                for(int i = 0; i < cnt && start > ls; i++)
+                    start = buf.prev_char(start);
                 charwise_op('d', start, cursor);
                 break;
             }
@@ -897,17 +925,20 @@ private:
             case 'C': charwise_op('c', cursor, le); break;
             case 's': {
                 size_t end = cursor;
-                for(int i = 0; i < cnt && end < le; i++) end = buf.next_char(end);
+                for(int i = 0; i < cnt && end < le; i++)
+                    end = buf.next_char(end);
                 charwise_op('c', cursor, end);
                 break;
             }
             case 'S':
-                linewise_op('c', line,
+                linewise_op('c',
+                            line,
                             std::min(line + static_cast<size_t>(cnt) - 1,
                                      buf.line_count() - 1));
                 break;
             case 'Y':
-                linewise_op('y', line,
+                linewise_op('y',
+                            line,
                             std::min(line + static_cast<size_t>(cnt) - 1,
                                      buf.line_count() - 1));
                 break;
@@ -928,10 +959,24 @@ private:
 
     static bool is_known_command(char32_t k) {
         switch(k) {
-            case 'Y': case 'i': case 'a': case 'I': case 'A': case 'o':
-            case 'O': case 'x': case 'X': case 'D': case 'C': case 's':
-            case 'S': case 'J': case 'p': case 'P': case 'u': case 'r':
-                return true;
+            case 'Y':
+            case 'i':
+            case 'a':
+            case 'I':
+            case 'A':
+            case 'o':
+            case 'O':
+            case 'x':
+            case 'X':
+            case 'D':
+            case 'C':
+            case 's':
+            case 'S':
+            case 'J':
+            case 'p':
+            case 'P':
+            case 'u':
+            case 'r': return true;
             default: return false;
         }
     }
@@ -940,7 +985,7 @@ private:
 
     bool handle_insert(const input::Event& e) {
         const bool ctrl = e.mods.has(input::Mod::Ctrl);
-        const bool alt  = e.mods.has(input::Mod::Alt);
+        const bool alt = e.mods.has(input::Mod::Alt);
         const size_t line = cur_line();
         const size_t ls = buf.line_start(line), le = buf.line_end(line);
 
@@ -965,8 +1010,14 @@ private:
                 clamp();
                 return true;
             }
-            case input::Key::Home: buf.seal(); set_cursor(ls); return true;
-            case input::Key::End: buf.seal(); set_cursor(le); return true;
+            case input::Key::Home:
+                buf.seal();
+                set_cursor(ls);
+                return true;
+            case input::Key::End:
+                buf.seal();
+                set_cursor(le);
+                return true;
             case input::Key::Enter: {
                 buf.seal();
                 std::string indent =
@@ -985,7 +1036,8 @@ private:
                 }
                 if(expand_tab) {
                     int col = col_of(buf.line_text(line), cursor - ls);
-                    insert_text(std::string(static_cast<size_t>(tw() - col % tw()), ' '));
+                    insert_text(std::string(
+                        static_cast<size_t>(tw() - col % tw()), ' '));
                 } else {
                     insert_text("\t");
                 }
@@ -994,9 +1046,11 @@ private:
             case input::Key::Backspace: {
                 if(cursor == 0) return true;
                 size_t start = buf.prev_char(cursor);
-                if(ctrl) start = cursor == ls ? start : std::max(word_back(cursor), ls);
+                if(ctrl)
+                    start =
+                        cursor == ls ? start : std::max(word_back(cursor), ls);
                 buf.erase(start, cursor - start);
-                cursor     = start;
+                cursor = start;
                 m_want_col = -1;
                 return true;
             }
@@ -1018,18 +1072,19 @@ private:
         return false;
     }
 
-    // ----- state ---------------------------------------------------------------
+    // ----- state
+    // ---------------------------------------------------------------
 
-    int         m_want_col{-1};  // sticky display column for j/k/Up/Down
-    int         m_count{0};
-    char32_t    m_op{0};         // pending operator: d c y > <
-    char32_t    m_pend{0};       // pending prefix: g or r
+    int m_want_col{-1};  // sticky display column for j/k/Up/Down
+    int m_count{0};
+    char32_t m_op{0};    // pending operator: d c y > <
+    char32_t m_pend{0};  // pending prefix: g or r
     std::string m_reg;
-    bool        m_reg_linewise{false};
+    bool m_reg_linewise{false};
 
     // Frame-local storage that DrawText views point into.
     mutable std::vector<std::string> m_rows;
-    mutable std::string              m_cursor_cell;
+    mutable std::string m_cursor_cell;
 };
 
 }  // namespace trux::component

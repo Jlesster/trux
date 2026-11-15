@@ -25,6 +25,7 @@ void renderer::Renderer::begin_draw() {
     std::fill(m_owner.begin(), m_owner.end(), false);
     m_commands.clear();
     m_handlers.clear();
+    m_tick = std::chrono::milliseconds{0};
     m_focus.begin_frame();
     m_root = layout::init(m_size);
 }
@@ -143,8 +144,7 @@ void renderer::Renderer::push(layout::Split& split, layout::Region area,
         false,
         [&] { split.build(area, m_commands); },
         [](const input::Event&) { return false; });
-    register_region(split.first, modal);
-    register_region(split.second, modal);
+    for(auto& part : split) register_region(part, modal);
 }
 
 void renderer::Renderer::register_region(layout::Region region, bool modal) {
@@ -152,13 +152,12 @@ void renderer::Renderer::register_region(layout::Region region, bool modal) {
     if(!comp) return;
 
     if(auto* nested = comp->as_split()) {
-        register_region(nested->first, modal);
-        register_region(nested->second, modal);
+        for(const auto& part : *nested) register_region(part, modal);
         return;
     }
     if(!comp->handleable()) return;
     auto id = static_cast<focus::FocusID>(comp);
-    if(!modal) m_focus.register_focusable(id);
+    if(!modal) m_focus.register_focusable(id, region.rect());
     m_handlers.push_back(
         Handler{id,
                 region,

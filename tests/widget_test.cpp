@@ -411,6 +411,51 @@ void dropdown_open_and_select_test() {
     assert(dropdown.selection == 1);
 }
 
+void dropdown_value_accessor_test() {
+    std::vector<std::string> options = {"yes", "no", "maybe"};
+    component::Dropdown dropdown(options);
+    assert(dropdown.value() == "yes");
+
+    // Assigning selection directly is reflected by the accessor.
+    dropdown.selection = 2;
+    assert(dropdown.value() == "maybe");
+
+    // Moving the selection refreshes the owned value.
+    dropdown.open = true;
+    assert(dropdown.handle(input::Event::key(input::Key::Up)));
+    assert(dropdown.selection == 1);
+    assert(dropdown.value() == "no");
+
+    // Wrapping around.
+    assert(dropdown.handle(input::Event::key(input::Key::Up)));
+    assert(dropdown.selection == 0);
+    assert(dropdown.value() == "yes");
+    assert(dropdown.handle(input::Event::key(input::Key::Up)));
+    assert(dropdown.selection == 2);
+    assert(dropdown.value() == "maybe");
+
+    // Rebinding refreshes the value from the new range; shrinking the
+    // range re-clamps the selection through value() too.
+    std::vector<std::string> replacement = {"a", "b", "c"};
+    dropdown.bind(replacement);
+    assert(dropdown.value() == "c");
+    replacement.resize(1);
+    assert(dropdown.value() == "a");
+
+    // Unbound reads as empty.
+    component::Dropdown unbound;
+    assert(unbound.value().empty());
+}
+
+void dropdown_value_projection_test() {
+    std::vector<Language> langs = {{"c++"}, {"rust"}};
+    component::Dropdown dropdown(langs, &Language::name);
+    assert(dropdown.value() == "c++");
+
+    dropdown.selection = 1;
+    assert(dropdown.value() == "rust");
+}
+
 void text_input_owns_value_test() {
     component::TextInput input{"ab"};
     assert(input.value == "ab");
@@ -428,7 +473,8 @@ void text_input_owns_value_test() {
 }
 
 void dialog_confirm_test() {
-    component::Dialog dialog{.title = "Rename"};
+    component::Dialog dialog;
+    dialog.title = "Rename";
     std::string confirmed;
     dialog.on_confirm = [&] { confirmed = dialog.input.value; };
     dialog.input.set_value("main.cpp");
@@ -453,7 +499,8 @@ void dialog_escape_test() {
 
 void dialog_render_test() {
     renderer::Renderer renderer({30, 10});
-    component::Dialog dialog{.title = "Hi"};
+    component::Dialog dialog;
+    dialog.title = "Hi";
     dialog.size = {10, 5};
     dialog |= component::BorderRounded;
     dialog.input.set_value("x");
@@ -467,6 +514,39 @@ void dialog_render_test() {
     assert(renderer.back_buffer().at({10, 2}).glyph == U'╭');
     assert(renderer.back_buffer().at({11, 3}).glyph == U'H');  // title
     assert(renderer.back_buffer().at({11, 4}).glyph == U'x');  // input
+}
+
+void dialog_look_survives_brace_test() {
+    component::Look base;
+    base.border.kind = component::BorderRounded;
+    base.border.fg = AnsiColor::CYAN;
+    base = base.titled({"Recording"});
+
+    // The Look constructor stores and applies the look.
+    component::Dialog dialog(base);
+    assert(dialog.flags.has(component::Flag::BorderRounded));
+    assert(dialog.border_color_fixed.has_value());
+    assert(dialog.title.text == "Recording");
+
+    // A DialogFields brace that names .look keeps the styling instead of
+    // resetting it, while still resetting unnamed non-look members.
+    dialog = {
+        .mode = component::Dialog::Mode::Text,
+        .look = base.titled({"Notify"}),
+        .dismissable = false,
+        .body = component::Paragraph{"Ctrl+r to stop"},
+    };
+    assert(dialog.flags.has(component::Flag::BorderRounded));
+    assert(dialog.border_color_fixed.has_value());
+    assert(dialog.title.text == "Notify");
+    assert(dialog.mode == component::Dialog::Mode::Text);
+    assert(!dialog.dismissable);
+
+    // A brace with no .look resets to default styling.
+    dialog = {.mode = component::Dialog::Mode::Text};
+    assert(!dialog.flags.has(component::Flag::BorderRounded));
+    assert(!dialog.border_color_fixed.has_value());
+    assert(dialog.title.text.empty());
 }
 
 // Every component must be default-constructible so a struct of them can
@@ -590,11 +670,15 @@ int main() {
     test::run("checkbox unbound ignores input", checkbox_unbound_test);
 
     test::run("dropdown open/select/close", dropdown_open_and_select_test);
+    test::run("dropdown value accessor", dropdown_value_accessor_test);
+    test::run("dropdown value projection", dropdown_value_projection_test);
 
     test::run("text input owns value", text_input_owns_value_test);
     test::run("dialog enter confirms and closes", dialog_confirm_test);
     test::run("dialog escape closes without confirm", dialog_escape_test);
     test::run("dialog renders title and input", dialog_render_test);
+    test::run("dialog look survives a DialogFields brace",
+              dialog_look_survives_brace_test);
 
     test::run("struct of default-constructed components",
               struct_of_components_test);
