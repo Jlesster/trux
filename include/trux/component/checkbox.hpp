@@ -8,6 +8,7 @@
 #include "trux/component/component_flags.hpp"
 #include "trux/component/item_view.hpp"
 #include "trux/component/look.hpp"
+#include "trux/diag/diag.hpp"
 #include "trux/input/event.hpp"
 #include "trux/renderer/draw_command.hpp"
 #include "trux/renderer/draw_command_buffer.hpp"
@@ -160,6 +161,10 @@ struct Checkbox {
     /// Clamps `offset`, then draws the visible slice of items with
     /// their checked-state glyph, highlighting the row at `cursor`.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
+        if(!view.bound())
+            TRUX_WARN_ONCE("Checkbox",
+                           "built while unbound: nothing will be drawn until "
+                           "bind(items) is called");
         auto content = area;
         if(auto border = active_border(flags)) {
             build_border(area, *border, cmd, border_color);

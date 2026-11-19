@@ -10,7 +10,7 @@
 
       mkTrux = pkgs: pkgs.stdenv.mkDerivation {
         pname = "trux";
-        version = "0.1.0"; # keep in sync with project(VERSION) in CMakeLists.txt
+        version = "0.2.0"; # keep in sync with project(VERSION) in CMakeLists.txt
         src = self;
 
         nativeBuildInputs = [ pkgs.cmake pkgs.ninja ];

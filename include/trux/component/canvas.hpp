@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "trux/diag/compile.hpp"
 #include "trux/component/border.hpp"
 #include "trux/component/component_flags.hpp"
 #include "trux/component/look.hpp"
@@ -16,6 +17,7 @@
 #include "trux/style/color.hpp"
 
 #include <algorithm>
+#include "trux/diag/diag.hpp"
 #include <cassert>
 #include <chrono>
 #include <cstddef>
@@ -90,9 +92,12 @@ struct Canvas {
             else if constexpr(std::invocable<F&, Canvas&, float>) fn(c, dt);
             else if constexpr(std::invocable<F&, Canvas&>) fn(c);
             else
-                static_assert(std::invocable<F&, Canvas&>,
-                              "on_frame handler must accept (Canvas&[, float "
-                              "dt[, float elapsed[, uint64_t frame]]])");
+                TRUX_CHECK("T0009", "bad on_frame handler signature",
+                           "the handler can't be called with a Canvas&",
+                           "use one of: (Canvas&), (Canvas&, float dt)," TRUX_NL
+                           "(Canvas&, float dt, float elapsed)," TRUX_NL
+                           "(Canvas&, float dt, float elapsed, uint64_t frame)",
+                           std::invocable<F&, Canvas&>);
         };
     }
     /// Removes the handler, returning to hand-driven mode.
@@ -166,12 +171,12 @@ struct Canvas {
     /// Cell at (x, y). Must be inside the grid (asserted in debug).
     [[nodiscard]]
     renderer::Cell& at(int x, int y) {
-        assert(contains({x, y}));
+        TRUX_ASSERT(contains({x, y}), "Canvas::at({}, {}) is outside the {}x{} grid", x, y, m_size.width, m_size.height);
         return m_cells[index(x, y)];
     }
     [[nodiscard]]
     const renderer::Cell& at(int x, int y) const {
-        assert(contains({x, y}));
+        TRUX_ASSERT(contains({x, y}), "Canvas::at({}, {}) is outside the {}x{} grid", x, y, m_size.width, m_size.height);
         return m_cells[index(x, y)];
     }
 

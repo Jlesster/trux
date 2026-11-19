@@ -9,6 +9,7 @@
 #include "trux/component/component_flags.hpp"
 #include "trux/component/item_view.hpp"
 #include "trux/component/look.hpp"
+#include "trux/diag/diag.hpp"
 #include "trux/input/event.hpp"
 #include "trux/input/key.hpp"
 #include "trux/renderer/draw_command.hpp"
@@ -156,6 +157,10 @@ struct Dropdown {
     /// if there are no options). While open, clamps `offset` and draws
     /// the visible slice of options, highlighting `selection`.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
+        if(!view.bound())
+            TRUX_WARN_ONCE("Dropdown",
+                           "built while unbound: nothing will be drawn until "
+                           "bind(items) is called");
         // The split always sees the closed footprint, so toggling never
         // moves a sibling.
         area.request_size({.height = collapsed_height()});

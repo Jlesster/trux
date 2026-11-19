@@ -104,9 +104,15 @@ void layout::Region::layout_split(RegionNode& parent, const SplitKey& key,
             ++unset;
             continue;
         }
+        // Percentages come from SplitKey::value / sizes, which only the
+        // v_split()/Leaves helpers clamp; split_by() can pass anything, and
+        // `along * percent` overflows int for large values.
         const int want =
-            key.fixed ? resolve_fixed(*spec[i], along) : along * *spec[i] / 100;
-        nat[i] = std::min(want, along - used);  // never overdraw
+            key.fixed
+                ? resolve_fixed(*spec[i], along)
+                : static_cast<int>(static_cast<long long>(along) *
+                                   std::clamp(*spec[i], 0, 100) / 100);
+        nat[i] = std::max(0, std::min(want, along - used));  // never overdraw
         used += nat[i];
     }
     const int rest = along - used;
@@ -175,8 +181,10 @@ void layout::Region::layout_split(RegionNode& parent, const SplitKey& key,
         const int cross =
             std::clamp(across_of(node.request).value_or(across), 0, across);
         // Parts after the first reach back over the seam; a fully
-        // swallowed part gets no overlap sliver either.
-        const bool reach = i > 0 && ext[i] > 0;
+        // swallowed part gets no overlap sliver either, and neither does
+        // a part with nothing visible before it (cursor == 0): reaching
+        // back there would put it one cell outside the parent.
+        const bool reach = i > 0 && ext[i] > 0 && cursor > 0;
         const int start = reach ? cursor - overlap : cursor;
         const int extent = ext[i] + (reach ? overlap : 0);
         node.rect = make(start, extent, cross);
@@ -299,10 +307,39 @@ layout::Region* layout::Leaves::find(std::string_view name) const {
     return it == named.end() ? nullptr : &it->second;
 }
 
+namespace {
+size_t edit_distance(std::string_view a, std::string_view b) {
+    std::vector<size_t> row(b.size() + 1);
+    for(size_t j = 0; j <= b.size(); j++) row[j] = j;
+    for(size_t i = 1; i <= a.size(); i++) {
+        size_t diag = row[0];
+        row[0] = i;
+        for(size_t j = 1; j <= b.size(); j++) {
+            size_t up = row[j];
+            row[j] = std::min({row[j] + 1, row[j - 1] + 1,
+                               diag + (a[i - 1] == b[j - 1] ? 0 : 1)});
+            diag = up;
+        }
+    }
+    return row[b.size()];
+}
+}  // namespace
+
 layout::Region& layout::Leaves::operator[](std::string_view name) const {
     if(auto* r = find(name)) return *r;
-    throw std::out_of_range("trux: no leaf named \"" + std::string(name) +
-                            "\"");
+
+    auto known = names();
+    std::string msg = "no leaf named \"" + std::string(name) + "\"";
+    const std::string* best = nullptr;
+    size_t best_d = std::max<size_t>(2, name.size() / 3) + 1;
+    for(auto& k : known)
+        if(size_t d = edit_distance(name, k); d < best_d) best = &k, best_d = d;
+    if(best) msg += "; did you mean \"" + *best + "\"?";
+    msg += " (known:";
+    if(known.empty()) msg += " none, was set_name() called?";
+    for(auto& k : known) msg += " " + k;
+    msg += ")";
+    throw std::out_of_range(msg);
 }
 
 bool layout::Leaves::contains(std::string_view name) const {

@@ -1,6 +1,7 @@
 #include "trux/renderer/cell.hpp"
 
 #include <algorithm>
+#include "trux/diag/diag.hpp"
 #include <cassert>
 #include <trux/renderer/cell_buffer.hpp>
 
@@ -49,11 +50,11 @@ void renderer::CellBuffer::invalidate() {
 void renderer::CellBuffer::clear() { std::ranges::fill(m_cells, Cell{}); }
 
 renderer::Cell& renderer::CellBuffer::at(layout::Position pos) {
-    assert(contains(pos));
+    TRUX_ASSERT(contains(pos), "CellBuffer::at({}, {}) is outside the {}x{} buffer", pos.x, pos.y, m_size.width, m_size.height);
     return m_cells[index(pos)];
 }
 
 const renderer::Cell& renderer::CellBuffer::at(layout::Position pos) const {
-    assert(contains(pos));
+    TRUX_ASSERT(contains(pos), "CellBuffer::at({}, {}) is outside the {}x{} buffer", pos.x, pos.y, m_size.width, m_size.height);
     return m_cells[index(pos)];
 }

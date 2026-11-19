@@ -5,6 +5,9 @@
 #pragma once
 
 #include "trux/component/component.hpp"
+#include "trux/diag/boundary.hpp"
+#include "trux/diag/compile.hpp"
+#include "trux/diag/diag.hpp"
 #include "trux/focus/focus_manager.hpp"
 #include "trux/input/event.hpp"
 #include "trux/layout/position.hpp"
@@ -20,6 +23,7 @@
 #include <functional>
 #include <optional>
 #include <string_view>
+#include <typeinfo>
 #include <vector>
 
 namespace trux::renderer {
@@ -149,6 +153,28 @@ public:
     /// dispatch (see register_region()).
     void push(layout::Split& split, layout::Region area, bool modal = false);
 
+    /// Catches push() of something that is not a component, so the error
+    /// says what is missing instead of listing every overload.
+    template <typename T>
+        requires(!component::ComponentType<T> &&
+                 !std::derived_from<T, component::ComponentBase> &&
+                 !std::derived_from<T, layout::Split>)
+    void push(T&, layout::Region, bool = false) {
+        TRUX_CHECK("T0004",
+                   "this type can't be pushed to the Renderer",
+                   "it has no `flags` member of type component::ComponentFlags",
+                   "add `component::ComponentFlags flags{};` to the type",
+                   component::has_flags_member<T>);
+        TRUX_CHECK(
+            "T0005",
+            "this type can't be pushed to the Renderer",
+            "it has no `void build(Region, DrawCommandBuffer&) const`" TRUX_NL
+            "(check it is const and returns void)",
+            "add `void build(layout::Region area," TRUX_NL
+            "renderer::DrawCommandBuffer& cmd) const` to the type",
+            component::has_build_member<T>);
+    }
+
     /// Generic overload for any type satisfying
     /// component::ComponentType, avoiding the need to type-erase
     /// into component::ComponentBase.
@@ -180,6 +206,7 @@ public:
             modal,
             handleable,
             focusable,
+            typeid(T),
             [&] {
                 if constexpr(requires { component.title.active; })
                     component.title.active = m_focus.is_focused(id);
@@ -243,8 +270,14 @@ public:
     /// `region` (intersected with any currently active clip).
     void set_clip(layout::Region);
 
-    /// Records a ClearClip command, popping the most recent set_clip().
+    /// Pops the most recent set_clip(), restoring the clip (and modal
+    /// flag) that was active before it. Unbalanced calls are logged and
+    /// ignored.
     void clear_clip();
+
+    /// Drops every active clip. Called between draw layers so one
+    /// layer's unbalanced SetClip can't leak into the next.
+    void reset_clips();
 
     /// Routes an input event to the appropriate handler and returns
     /// whether it was consumed.
@@ -266,6 +299,138 @@ public:
     [[nodiscard]]
     const focus::FocusManager& focus() noexcept {
         return m_focus;
+    }
+
+    /// Whether `component` is the one that currently has input focus.
+    ///
+    /// Takes the same object that was passed to push(), so callers
+    /// need no casting or FocusID handling. Reflects the focus state
+    /// as of the most recent end_draw().
+    ///
+    /// @tparam T         Type of the component being queried.
+    /// @param component  The component to test, by identity (address).
+    /// @return true if `component` currently has focus, false if it is
+    ///         unfocused or was not pushed this frame.
+    template <typename T>
+    [[nodiscard]]
+    bool is_focused(const T& component) const noexcept {
+        return m_focus.is_focused(static_cast<focus::FocusID>(&component));
+    }
+
+    /// Returns the focused component as a `T*`.
+    ///
+    /// Only components pushed directly (e.g. `push(menu, area)`) can be
+    /// recovered this way. Components reached through a type-erased
+    /// component::ComponentBase or a layout::Split are not matched and
+    /// yield nullptr. The pointer is valid until the next begin_draw().
+    ///
+    /// @code{.cpp}
+    /// if(auto* menu = renderer.focused_as<Menu>())
+    ///     selected = menu->selection;
+    /// @endcode
+    ///
+    /// @tparam T  Exact concrete type the component was pushed as.
+    ///            Must not derive from component::ComponentBase.
+    /// @return Pointer to the focused component if it is a `T`;
+    ///         nullptr if nothing is focused or the focused component
+    ///         is of a different type.
+    template <typename T>
+        requires(!std::derived_from<T, component::ComponentBase>)
+    [[nodiscard]]
+    T* focused_as() const noexcept {
+        const focus::FocusID id = m_focus.focused();
+        if(!id) return nullptr;
+        for(const Handler& h : m_handlers) {
+            if(h.id != id) continue;
+            if(!h.type || *h.type != typeid(T)) return nullptr;
+            return static_cast<T*>(const_cast<void*>(id));
+        }
+        return nullptr;
+    }
+
+    /// The Region the focused component was pushed into during the
+    /// most recent frame.
+    ///
+    /// @return The focused component's Region, or std::nullopt if
+    ///         nothing is focused.
+    [[nodiscard]]
+    std::optional<layout::Region> focused_region() const {
+        const focus::FocusID id = m_focus.focused();
+        if(!id) return std::nullopt;
+        for(const Handler& h : m_handlers)
+            if(h.id == id) return h.region;
+        return std::nullopt;
+    }
+
+    /// Snapshot of the panel that currently has input focus.
+    ///
+    /// A lightweight, copyable handle returned by active_panel(). It
+    /// does not own the component; it is valid until the next
+    /// begin_draw(). Test it with `if(panel)` before use.
+    struct Panel {
+        /// Identity of the component (address it was pushed as).
+        focus::FocusID id{nullptr};
+        /// Dynamic type the component was pushed as, if known.
+        const std::type_info* type{nullptr};
+        /// Region the component occupied in the most recent frame.
+        layout::Region region{};
+
+        /// @return true if a panel is focused, false for the empty panel.
+        [[nodiscard]]
+        explicit operator bool() const noexcept {
+            return id != nullptr;
+        }
+
+        /// Whether the focused panel was pushed directly as a `T`.
+        ///
+        /// @tparam T  Concrete component type (not a ComponentBase).
+        template <typename T>
+            requires(!std::derived_from<T, component::ComponentBase>)
+        [[nodiscard]]
+        bool is() const noexcept {
+            return id && type && *type == typeid(T);
+        }
+
+        /// The panel as a `T*`.
+        ///
+        /// @tparam T  Concrete component type (not a ComponentBase).
+        /// @return Pointer to the component, or nullptr if the panel is
+        ///         empty or is not a `T`.
+        template <typename T>
+            requires(!std::derived_from<T, component::ComponentBase>)
+        [[nodiscard]]
+        T* as() const noexcept {
+            return is<T>() ? static_cast<T*>(const_cast<void*>(id)) : nullptr;
+        }
+    };
+
+    /// The panel that currently has input focus.
+    ///
+    /// Never fails: when nothing is focused the returned Panel is empty
+    /// (`!panel`). The reference points at renderer-owned storage that
+    /// is refreshed on every call, so it always reflects the current
+    /// focus; copy it (`auto p = ...`) if you need a stable snapshot.
+    /// Does not alter focus().focused(), which is unchanged.
+    ///
+    /// @code{.cpp}
+    /// auto& panel = renderer.active_panel();   // live view
+    /// auto  snap  = renderer.active_panel();   // copy
+    /// auto* menu  = renderer.active_panel().as<Menu>();
+    /// if(panel) draw_status(panel.region);
+    /// @endcode
+    ///
+    /// @return Reference to the current active Panel.
+    [[nodiscard]]
+    const Panel& active_panel() const {
+        m_active_panel = {};
+        const focus::FocusID id = m_focus.focused();
+        if(!id) return m_active_panel;
+        for(const Handler& h : m_handlers) {
+            if(h.id != id) continue;
+            m_active_panel = Panel{h.id, h.type, h.region};
+            break;
+        }
+        return m_active_panel;
     }
 
     /// The root Region rebuilt by the most recent begin_draw(),
@@ -294,6 +459,11 @@ public:
         if(m_tick.count() == 0 || interval < m_tick) m_tick = interval;
     }
 
+    /// Shows the newest warning/error (diag::warn()/diag::error()) as a
+    /// one-line strip on the bottom row for a few seconds. On by
+    /// default; the full history is in the log (see diag::Log::path()).
+    void set_diagnostics_overlay(bool on) noexcept { m_diag_overlay = on; }
+
 private:
     /// One registered input target: the region it covers, whether it
     /// belongs to a modal layer, and the callback to invoke when it
@@ -306,6 +476,8 @@ private:
         std::function<bool(const input::Event&)> fn;
         /// True if the component wants Tab offered to fn first.
         std::function<bool()> captures_tab;
+        /// Dynamic type, for diagnostics only.
+        const std::type_info* type{nullptr};
     };
 
     CellBuffer m_front;
@@ -315,7 +487,14 @@ private:
     std::vector<bool> m_owner;
     bool m_current_modal{false};
 
+    /// Saved state of one active SetClip: what was in effect before it.
+    struct ClipFrame {
+        std::optional<layout::Region> clip;
+        bool modal;
+    };
+
     std::optional<layout::Region> m_clip;
+    std::vector<ClipFrame> m_clip_stack;
 
     layout::Size m_size;
     std::chrono::milliseconds m_tick{0};
@@ -323,9 +502,30 @@ private:
 
     focus::FocusManager m_focus;
     std::vector<Handler> m_handlers;
+    mutable Panel m_active_panel;
 
     style::Color m_focus_color{style::Color::ActiveBorderColor()};
     style::Color m_default_color{255, 255, 255, 255};
+
+    bool m_diag_overlay{true};
+
+    /// Draws the diagnostics strip (see set_diagnostics_overlay()).
+    void push_diagnostic_toast();
+    /// Runs a component's build; if it throws, discards what it
+    /// recorded, logs it, and draws an error box in `area` instead.
+    template <typename Fn>
+    void guarded_build(const std::type_info& type, layout::Region area,
+                       Fn&& fn) {
+        const auto cp = m_commands.checkpoint();
+        try {
+            fn();
+        } catch(...) { build_failed(type, area, cp); }
+    }
+    /// Must be called from inside a catch block.
+    void build_failed(const std::type_info& type, layout::Region area,
+                      DrawCommandBuffer::Checkpoint cp);
+    /// Invokes a handler, turning an exception into a logged "not consumed".
+    bool call_handler(const Handler& handler, const input::Event& e);
 
     /// Replays every recorded DrawCommand into the back buffer.
     void resolve();
@@ -346,13 +546,14 @@ private:
     /// `handleable` and reachable (modal, or focusable).
     template <typename BuildFn, typename HandleFn>
     void push_generic(focus::FocusID id, layout::Region area, bool modal,
-                      bool handleable, bool focusable, BuildFn&& build_fn,
+                      bool handleable, bool focusable,
+                      const std::type_info& type, BuildFn&& build_fn,
                       HandleFn&& handle_fn,
                       std::function<bool()> captures_tab = {}) {
         if(!modal && focusable) m_focus.register_focusable(id, area.rect());
 
         m_commands.push(SetClip{area, modal});
-        build_fn();
+        guarded_build(type, area, [&] { build_fn(); });
         m_commands.push(ClearClip{});
 
         if(handleable && (modal || focusable))
@@ -360,7 +561,8 @@ private:
                                          area,
                                          modal,
                                          std::forward<HandleFn>(handle_fn),
-                                         std::move(captures_tab)});
+                                         std::move(captures_tab),
+                                         &type});
     }
 };
 

@@ -31,6 +31,7 @@ void renderer::Renderer::begin_draw() {
 }
 
 void renderer::Renderer::end_draw() {
+    push_diagnostic_toast();
     resolve();
     coalesce_borders();
     m_batches = build_batches();
@@ -131,6 +132,7 @@ void renderer::Renderer::push(component::ComponentBase& component,
         modal,
         component.handleable(),
         component.focusable(),
+        typeid(component),
         [&] { component.build(area, m_commands); },
         [&component](const input::Event& e) { return component.handle(e); },
         [&component] { return component.captures_tab(); });
@@ -144,6 +146,7 @@ void renderer::Renderer::push(layout::Split& split, layout::Region area,
         modal,
         false,
         false,
+        typeid(split),
         [&] { split.build(area, m_commands); },
         [](const input::Event&) { return false; });
     for(auto& part : split) register_region(part, modal);
@@ -167,7 +170,8 @@ void renderer::Renderer::register_region(layout::Region region, bool modal) {
                     region,
                     modal,
                     [comp](const input::Event& e) { return comp->handle(e); },
-                    [comp] { return comp->captures_tab(); }});
+                    [comp] { return comp->captures_tab(); },
+                    &typeid(*comp)});
 }
 
 void renderer::Renderer::text(layout::Region region, layout::Position pos,
@@ -186,7 +190,7 @@ bool renderer::Renderer::dispatch(const input::Event& e) {
     }
 
     for(auto it = m_handlers.rbegin(); it != m_handlers.rend(); it++) {
-        if(it->modal) return it->fn(e);
+        if(it->modal) return call_handler(*it, e);
     }
 
     if(e.kind == input::EventKind::Key && e.code == input::Key::Tab) {
@@ -194,7 +198,8 @@ bool renderer::Renderer::dispatch(const input::Event& e) {
         // first; focus moves only if they decline it.
         for(auto it = m_handlers.rbegin(); it != m_handlers.rend(); it++) {
             if(m_focus.is_focused(it->id)) {
-                if(it->captures_tab && it->captures_tab() && it->fn(e))
+                if(it->captures_tab && it->captures_tab() &&
+                   call_handler(*it, e))
                     return true;
                 break;
             }
@@ -215,9 +220,72 @@ bool renderer::Renderer::dispatch(const input::Event& e) {
     }
 
     for(auto it = m_handlers.rbegin(); it != m_handlers.rend(); it++) {
-        if(m_focus.is_focused(it->id)) return it->fn(e);
+        if(m_focus.is_focused(it->id)) return call_handler(*it, e);
     }
     return false;
+}
+
+void renderer::Renderer::build_failed(const std::type_info& type,
+                                      layout::Region area,
+                                      DrawCommandBuffer::Checkpoint cp) {
+    // Unwinding already ran any OverlayScope destructors; rollback drops
+    // everything the component recorded, so only the error box remains.
+    m_commands.rollback(cp);
+    const auto name = diag::short_type_name(type);
+    const auto what = diag::describe_current_exception();
+    diag::error(name,
+                "build() threw: " + what,
+                "component replaced by an error box; the rest of the UI is unaffected");
+    diag::build_error_box(area, name, what, m_commands);
+}
+
+bool renderer::Renderer::call_handler(const Handler& handler,
+                                      const input::Event& e) {
+    try {
+        return handler.fn(e);
+    } catch(...) {
+        diag::error(handler.type ? diag::short_type_name(*handler.type)
+                                 : std::string("component"),
+                    "handle() threw: " + diag::describe_current_exception(),
+                    "event ignored");
+        return false;
+    }
+}
+
+void renderer::Renderer::push_diagnostic_toast() {
+    using namespace std::chrono_literals;
+    if(!m_diag_overlay || m_size.width < 12 || m_size.height < 1) return;
+    auto d = diag::Log::get().latest(diag::Severity::Warn, 6000ms);
+    if(!d) return;
+
+    const bool is_error = d->severity >= diag::Severity::Error;
+    std::string line = std::format(" {} {}: {}", diag::label(d->severity),
+                                   d->source, d->message);
+    if(d->count > 1) line += std::format("  (x{})", d->count);
+    // One row: cut to width (by code point, never mid-sequence).
+    int cols = 0;
+    size_t bytes = 0;
+    while(bytes < line.size() && cols < m_size.width - 2) {
+        bytes = util::next_boundary(line, static_cast<int>(bytes));
+        cols++;
+    }
+    if(bytes < line.size()) {
+        line.resize(bytes);
+        line += "…";
+    }
+    line += ' ';
+
+    const style::Color bg = style::Color::Ansi(is_error ? 1 : 3);
+    const style::Color fg = style::Color::Ansi(is_error ? 15 : 0);
+    layout::Region row{{0, m_size.height - 1}, {m_size.width, 1}};
+    OverlayScope scope(m_commands, row);
+    m_commands.push(Fill{row, Cell{.glyph = U' ', .foreground = fg, .background = bg}});
+    m_commands.push(DrawText{.position = {0, m_size.height - 1},
+                             .text = m_commands.own(std::move(line)),
+                             .style = style::Style::Bold,
+                             .fg = fg,
+                             .bg = bg});
+    request_tick(250ms);  // so the strip clears itself
 }
 
 void renderer::Renderer::resolve() {
@@ -256,17 +324,21 @@ void renderer::Renderer::resolve() {
                             }
                         }
                     } else if constexpr(std::is_same_v<T, SetClip>) {
-                        m_current_modal = cmd.modal;
                         set_clip(cmd.region);
+                        m_current_modal = cmd.modal;
                     } else if constexpr(std::is_same_v<T, ClearClip>) {
-                        m_current_modal = false;
                         clear_clip();
                     }
                 },
                 command);
         }
-        clear_clip();
-        m_current_modal = false;
+        if(!m_clip_stack.empty())
+            diag::warn("Renderer",
+                       std::format("{} SetClip(s) never cleared by the end of "
+                                   "a draw layer; a component's build() "
+                                   "probably threw or returned early",
+                                   m_clip_stack.size()));
+        reset_clips();
     }
 }
 
@@ -317,6 +389,7 @@ void renderer::Renderer::coalesce_borders() {
 }
 
 void renderer::Renderer::set_clip(layout::Region region) {
+    m_clip_stack.push_back({m_clip, m_current_modal});
     if(!m_clip) {
         m_clip = region;
         return;
@@ -335,4 +408,20 @@ void renderer::Renderer::set_clip(layout::Region region) {
         layout::Region{{x0, y0}, {std::max(0, x1 - x0), std::max(0, y1 - y0)}};
 }
 
-void renderer::Renderer::clear_clip() { m_clip.reset(); }
+void renderer::Renderer::clear_clip() {
+    if(m_clip_stack.empty()) {
+        TRUX_WARN_ONCE("Renderer", "ClearClip without a matching SetClip");
+        m_clip.reset();
+        m_current_modal = false;
+        return;
+    }
+    m_clip = std::move(m_clip_stack.back().clip);
+    m_current_modal = m_clip_stack.back().modal;
+    m_clip_stack.pop_back();
+}
+
+void renderer::Renderer::reset_clips() {
+    m_clip.reset();
+    m_clip_stack.clear();
+    m_current_modal = false;
+}

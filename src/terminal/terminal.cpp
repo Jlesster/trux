@@ -1,3 +1,4 @@
+#include "trux/diag/diag.hpp"
 #include "trux/input/event.hpp"
 #include "trux/renderer/renderer.hpp"
 #include "trux/util/util.hpp"
@@ -26,6 +27,23 @@ extern "C" void handle_signal(int) {
 }
 extern "C" void handle_resize(int) {
     g_resize_requested.store(true, std::memory_order_relaxed);
+}
+
+// State for the crash path. Plain globals on purpose: the hook below
+// runs inside a signal handler, so it may only use write(2)/tcsetattr(3).
+termios g_saved_termios{};
+std::atomic<bool> g_term_active{false};
+std::atomic<bool> g_term_raw{false};
+
+void restore_terminal_async_safe() noexcept {
+    if(!g_term_active.load(std::memory_order_relaxed)) return;
+    // Mirrors Terminal::shutdown(): cursor, mouse, paste, kitty kbd, alt screen.
+    static constexpr char seq[] =
+        "\x1b[0m\x1b[?25h\x1b[?1006l\x1b[?1002l\x1b[?2004l\x1b[<u\x1b[?1049l";
+    (void)!::write(STDOUT_FILENO, seq, sizeof seq - 1);
+    if(g_term_raw.load(std::memory_order_relaxed))
+        tcsetattr(STDIN_FILENO, TCSAFLUSH, &g_saved_termios);
+    g_term_active.store(false, std::memory_order_relaxed);
 }
 
 void install_handler(int sig, void (*handler)(int)) {
@@ -81,6 +99,7 @@ std::expected<void, std::string> Terminal::enable_raw_mode() {
         return std::unexpected("[ERROR] Failed to enable raw mode");
 
     m_impl->raw_enabled = true;
+    g_term_raw.store(true, std::memory_order_relaxed);
     return {};
 }
 
@@ -92,6 +111,13 @@ std::expected<void, std::string> Terminal::init() {
 
     if(tcgetattr(STDIN_FILENO, &m_impl->original_termios) == -1)
         return std::unexpected("[ERROR] Failed to read terminal settings");
+
+    // From here on a crash must put the terminal back before reporting,
+    // and stray stderr output must not land on the UI.
+    g_saved_termios = m_impl->original_termios;
+    g_term_active.store(true, std::memory_order_relaxed);
+    diag::install_crash_handlers(restore_terminal_async_safe);
+    diag::Log::get().redirect_stderr();
 
     // alternate screen
     ansi::enter_alt_screen();
@@ -150,6 +176,19 @@ void Terminal::shutdown() {
         tcsetattr(STDIN_FILENO, TCSAFLUSH, &m_impl->original_termios);
         m_impl->raw_enabled = false;
     }
+
+    g_term_raw.store(false, std::memory_order_relaxed);
+    g_term_active.store(false, std::memory_order_relaxed);
+    diag::set_restore_hook(nullptr);
+
+    // Back on the normal screen: one quiet line if anything went wrong.
+    auto& log = diag::Log::get();
+    log.restore_stderr();
+    const auto errors = log.total(diag::Severity::Error);
+    const auto warns = log.total(diag::Severity::Warn);
+    if(errors || warns)
+        std::println(stderr, "trux: {} error(s), {} warning(s) this session, see {}",
+                     errors, warns, log.path());
 
     m_impl->initialized = false;
 }

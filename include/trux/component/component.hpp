@@ -18,6 +18,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <type_traits>
 
 /// Color enum to be passed as the index in color functions, matches ANSI
@@ -371,6 +372,11 @@ struct Container {
     /// Splits `area` per percent/horizontal and builds `first` and
     /// `second` into their respective halves.
     void build(layout::Region area, renderer::DrawCommandBuffer& cmd) const {
+        if(!first || !second)
+            throw std::logic_error(
+                std::string("Container has no ") +
+                (!first ? "`first`" : "`second`") +
+                " child: assign both before pushing it");
         auto split = horizontal ? area.h_split(percent) : area.v_split(percent);
         first->build(split[0], cmd);
         second->build(split[1], cmd);

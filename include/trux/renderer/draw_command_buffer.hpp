@@ -6,6 +6,8 @@
 
 #include "trux/renderer/draw_command.hpp"
 
+#include <deque>
+#include <string>
 #include <vector>
 
 namespace trux::renderer {
@@ -37,7 +39,39 @@ public:
     void clear() {
         m_commands.clear();
         m_overlay_commands.clear();
+        m_scratch.clear();
         m_overlay = false;
+    }
+
+    /// A restore point for rollback(): lets the renderer discard what a
+    /// component recorded before it threw, so a half-built component
+    /// can't leave dangling SetClips or stray cells behind.
+    struct Checkpoint {
+        size_t commands{};
+        size_t overlay_commands{};
+        bool overlay{};
+    };
+    [[nodiscard]]
+    Checkpoint checkpoint() const noexcept {
+        return {m_commands.size(), m_overlay_commands.size(), m_overlay};
+    }
+    void rollback(const Checkpoint& cp) {
+        if(m_commands.size() > cp.commands)
+            m_commands.erase(m_commands.begin() + static_cast<ptrdiff_t>(cp.commands),
+                             m_commands.end());
+        if(m_overlay_commands.size() > cp.overlay_commands)
+            m_overlay_commands.erase(
+                m_overlay_commands.begin() + static_cast<ptrdiff_t>(cp.overlay_commands),
+                m_overlay_commands.end());
+        m_overlay = cp.overlay;
+    }
+
+    /// Stores `text` until the next clear() and returns a view that is
+    /// valid for the rest of the frame. Use for DrawText content built
+    /// on the fly (DrawText::text is not owned).
+    [[nodiscard]]
+    std::string_view own(std::string text) {
+        return m_scratch.emplace_back(std::move(text));
     }
 
     /// The overlay commands recorded so far, in push order.
@@ -55,6 +89,7 @@ public:
 private:
     std::vector<DrawCommand> m_commands;
     std::vector<DrawCommand> m_overlay_commands;
+    std::deque<std::string> m_scratch;  // deque: views stay valid on growth
     bool m_overlay{false};
 };
 

@@ -6,6 +6,7 @@
 
 #include "trux/component/component_flags.hpp"
 #include "trux/layout/position.hpp"
+#include "trux/diag/compile.hpp"
 #include "trux/layout/rect.hpp"
 
 #include <algorithm>
@@ -51,6 +52,18 @@ concept ComponentType = requires(const T& component, layout::Region area,
     { component.flags } -> std::same_as<const ComponentFlags&>;
     { component.build(area, commands) } -> std::same_as<void>;
 };
+
+/// The two halves of ComponentType, kept separate so a misuse can say
+/// which half is missing (see TRUX_CHECK at the use sites).
+template <typename T>
+inline constexpr bool has_flags_member = requires(const T& c) {
+    { c.flags } -> std::same_as<const ComponentFlags&>;
+};
+template <typename T>
+inline constexpr bool has_build_member =
+    requires(const T& c, layout::Region area, renderer::DrawCommandBuffer& cmd) {
+        { c.build(area, cmd) } -> std::same_as<void>;
+    };
 
 /// Type-erasing wrapper that lets any ComponentType be stored behind
 /// a `component::ComponentBase*` and owned by a Region.
@@ -299,8 +312,19 @@ public:
     /// @tparam T Any type satisfying component::ComponentType.
     template <typename T>
     Region& operator=(T comp) {
-        set_component(
-            std::make_shared<component::ComponentWrapper<T>>(std::move(comp)));
+        TRUX_CHECK("T0004", "this type can't be placed in a Region",
+                   "it has no `flags` member of type component::ComponentFlags",
+                   "add `component::ComponentFlags flags{};` to the type",
+                   component::has_flags_member<T>);
+        TRUX_CHECK("T0005", "this type can't be placed in a Region",
+                   "it has no `void build(Region, DrawCommandBuffer&) const`" TRUX_NL
+                   "(check it is const and returns void)",
+                   "add `void build(layout::Region area," TRUX_NL
+                   "renderer::DrawCommandBuffer& cmd) const` to the type",
+                   component::has_build_member<T>);
+        if constexpr(component::ComponentType<T>)
+            set_component(std::make_shared<component::ComponentWrapper<T>>(
+                std::move(comp)));
         return *this;
     }
 
@@ -336,7 +360,10 @@ private:
 
     template <std::size_t N>
     SplitN<N>& split_as(const SplitKey& key) const {
-        static_assert(N >= 2, "a split needs at least two children");
+        TRUX_CHECK("T0006", "a split needs at least two children",
+                   "a split was requested with fewer than 2 parts",
+                   "use v_split()/h_split() (2 parts) or v_split<3>(), <4>(), ...",
+                   N >= 2);
         return static_cast<SplitN<N>&>(split_impl(key, [] {
             return std::static_pointer_cast<Split>(
                 std::make_shared<SplitN<N>>());
@@ -489,7 +516,11 @@ private:
     SplitN<N>& run(std::string_view parent, Orientation o, bool fixed,
                    const int (&sizes)[M],
                    const std::string_view (&names)[N]) const {
-        static_assert(M <= N, "more sizes than names");
+        TRUX_CHECK("T0007", "more sizes than names in a split table",
+                   "the sizes list has more entries than the names list" TRUX_NL
+                   "so some sizes would belong to a region that has no name",
+                   "give every size a name, or drop the extra sizes",
+                   M <= N);
         SplitKey key{o, fixed, 0};
         for(std::size_t i = 0; i < M; ++i) {
             const int v = sizes[i];
@@ -522,19 +553,31 @@ namespace trux::layout {
 /// copy as an xvalue, which would otherwise pick the const overload.
 template <std::size_t I, std::size_t N>
 constexpr Region& get(SplitN<N>& s) noexcept {
-    static_assert(I < N, "index out of range for SplitN");
+    TRUX_CHECK("T0008", "split index out of range",
+               "get<I> was used with an index past the last part of the split",
+               "a split of N parts has indices 0..N-1 (check the structured" TRUX_NL
+               "binding: `auto [a, b] = ...` needs exactly N names)",
+               I < N);
     return s.parts[I];
 }
 /// @copydoc get(SplitN<N>&)
 template <std::size_t I, std::size_t N>
 constexpr const Region& get(const SplitN<N>& s) noexcept {
-    static_assert(I < N, "index out of range for SplitN");
+    TRUX_CHECK("T0008", "split index out of range",
+               "get<I> was used with an index past the last part of the split",
+               "a split of N parts has indices 0..N-1 (check the structured" TRUX_NL
+               "binding: `auto [a, b] = ...` needs exactly N names)",
+               I < N);
     return s.parts[I];
 }
 /// @copydoc get(SplitN<N>&)
 template <std::size_t I, std::size_t N>
 constexpr Region& get(SplitN<N>&& s) noexcept {
-    static_assert(I < N, "index out of range for SplitN");
+    TRUX_CHECK("T0008", "split index out of range",
+               "get<I> was used with an index past the last part of the split",
+               "a split of N parts has indices 0..N-1 (check the structured" TRUX_NL
+               "binding: `auto [a, b] = ...` needs exactly N names)",
+               I < N);
     return s.parts[I];
 }
 
