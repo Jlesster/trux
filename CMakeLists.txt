@@ -2,10 +2,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
     message(FATAL_ERROR "In-source builds are not allowed. Please use:\n  cmake -B build\nThen delete CMakeCache.txt and CMakeFiles/ from this directory.")
 endif()
 
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.25)
 project(trux LANGUAGES CXX VERSION 0.1.0)
 
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(/home/kenshii/.cmake/my-defaults.cmake OPTIONAL)
@@ -20,8 +20,15 @@ message(STATUS "Sources found: ${SOURCES}")
 add_library(${PROJECT_NAME}_lib STATIC ${SOURCES})
 target_include_directories(${PROJECT_NAME}_lib PUBLIC include)
 
-# Force-strip sanitizers on Release builds, regardless of what
-# my-defaults.cmake (or anything else) injected above.
+include(GNUInstallDirs)
+
+install(TARGETS ${PROJECT_NAME}_lib ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(DIRECTORY include/trux DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+configure_file(trux.pc.in ${CMAKE_CURRENT_BINARY_DIR}/trux.pc @ONLY)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/trux.pc
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_options(${PROJECT_NAME}_lib PRIVATE -fno-sanitize=all)
     target_link_options(${PROJECT_NAME}_lib PRIVATE -fno-sanitize=all)
@@ -39,8 +46,6 @@ target_link_libraries(example PRIVATE ${PROJECT_NAME}_lib)
 enable_testing()
 add_subdirectory(tests)
 
-# --- Documentation ---
-include(GNUInstallDirs)
 
 option(TRUX_BUILD_DOCS "Generate and install Doxygen API documentation" ON)
 
